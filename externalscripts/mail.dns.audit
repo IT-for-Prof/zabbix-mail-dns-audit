@@ -1,0 +1,732 @@
+#!/usr/bin/env python3
+# itforprof.com by Konstantin Tyutyunnik
+"""
+External check for Zabbix: audit DNS posture of mail domains.
+Returns one-line JSON with MX, SPF, DNSBL, DNSSEC and meta fields.
+"""
+
+import argparse
+import hashlib
+import ipaddress
+import json
+import os
+import random
+import re
+import sys
+import time
+from typing import Dict, List, Optional, Tuple
+
+import dns.flags  # type: ignore
+import dns.resolver  # type: ignore
+import dns.exception  # type: ignore
+import dns.rcode  # type: ignore
+
+VERSION = "0.1.15"
+
+DEFAULT_RESOLVER = "1.1.1.1"
+DEFAULT_TIMEOUT = 3.0
+DEFAULT_CHECK_IPV6 = False
+DEFAULT_DNSBL_ZONES = ["zen.spamhaus.org", "bl.spamcop.net", "b.barracudacentral.org"]
+DEFAULT_CIDR_ALLOWLIST: List[ipaddress._BaseNetwork] = []
+DEFAULT_SPF_MAX_LOOKUPS = 10
+DEFAULT_SPF_EXPECT_ALL = "-all|~all"
+DEFAULT_DNSBL_CACHE_TTL = 1200
+DEFAULT_MAX_MX = 5
+DEFAULT_MAX_IP_PER_MX = 5
+DEFAULT_DNSBL_MAX_IP = 5
+DEFAULT_DKIM_SELECTORS = ["default"]
+CACHE_PATH = "/tmp/mail_dns_audit_cache.json"
+
+
+def load_cache(path: str) -> Dict[str, Dict]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def save_cache(path: str, data: Dict[str, Dict]) -> None:
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=True)
+    except Exception:
+        pass
+
+
+def build_resolver(nameserver: str, timeout: float, shuffle: bool = True) -> dns.resolver.Resolver:
+    resolver = dns.resolver.Resolver(configure=False)
+    # Allow multiple servers split by comma; fallback to system if empty
+    servers = [s.strip() for s in nameserver.split(",") if s.strip()] if nameserver else []
+    if not servers:
+        resolver = dns.resolver.Resolver()  # system config
+    else:
+        # Shuffle nameservers to distribute load across the list if enabled
+        if shuffle:
+            random.shuffle(servers)
+        resolver.nameservers = servers
+        resolver.lifetime = timeout
+        resolver.timeout = timeout
+    return resolver
+
+
+def query_records(
+    resolver: dns.resolver.Resolver, name: str, rdtype: str
+) -> Tuple[List[str], Optional[int], bool]:
+    try:
+        answer = resolver.resolve(name, rdtype, raise_on_no_answer=False, search=False)
+        ad_flag = bool(answer.response.flags & dns.flags.AD)
+        ttl = answer.rrset.ttl if answer.rrset else None
+        if not answer.rrset:
+            return [], ttl, ad_flag
+        records: List[str] = []
+        if rdtype.upper() == "TXT":
+            for r in answer:
+                try:
+                    # Join TXT chunks into a plain string without surrounding quotes
+                    records.append(b"".join(r.strings).decode("utf-8", errors="ignore"))
+                except Exception:
+                    records.append(r.to_text().strip('"'))
+        else:
+            records = [r.to_text() for r in answer]
+        return records, ttl, ad_flag
+    except dns.exception.DNSException:
+        return [], None, False
+
+
+def reverse_ipv4(ip: str) -> str:
+    return ".".join(reversed(ip.split(".")))
+
+
+def parse_allowlist(raw: str) -> List[ipaddress._BaseNetwork]:
+    items = []
+    for part in [p.strip() for p in raw.split(",") if p.strip()]:
+        try:
+            items.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    return items
+
+
+def spf_lookup_estimate(mechanisms: List[str]) -> int:
+    total = 0
+    for mech in mechanisms:
+        token = mech.lower()
+        if token.startswith("include:"):
+            total += 1
+        elif token.startswith("redirect="):
+            total += 1
+        elif token.startswith("exists:"):
+            total += 1
+        elif token.startswith("a"):
+            total += 1
+        elif token.startswith("mx"):
+            total += 1
+    return total
+
+
+def parse_spf(
+    domain: str,
+    spf_records: List[str],
+    resolver: dns.resolver.Resolver,
+    allowlist: List[ipaddress._BaseNetwork],
+    check_ipv6: bool,
+    timeout: float,
+    spf_expect_all: str,
+    mx_hosts: List[str],
+) -> Dict:
+    has_ptr = False
+    unresolved_a: List[str] = []
+    unresolved_mx: List[str] = []
+    cidr_entries: List[str] = []
+    cidr_outside: List[str] = []
+    lookup_mechanisms: List[str] = []
+    all_mechanism = ""
+    has_mx_mech = False
+    include_matches_mx: List[str] = []
+
+    if not spf_records:
+        return {
+            "has_ptr": False,
+            "has_multiple_spf": False,
+            "lookup_estimate": 0,
+            "unresolved_a_mechanisms": [],
+            "unresolved_mx_mechanisms": [],
+            "cidr_entries": [],
+            "cidr_out_of_allowlist": [],
+            "all_mechanism": "",
+            "all_policy_ok": False,
+            "has_mx_mechanism": False,
+            "includes_mx_hosts": [],
+            "mx_covered": False,
+        }
+
+    primary = spf_records[0]
+    parts = primary.split()
+    for part in parts[1:]:
+        token = part.lower()
+        if token.startswith("ptr"):
+            has_ptr = True
+        if token.startswith("include:") or token.startswith("redirect=") or token.startswith("exists:"):
+            lookup_mechanisms.append(token)
+            target = token.split(":", 1)[1] if ":" in token else ""
+            if target and target.rstrip(".") in mx_hosts:
+                include_matches_mx.append(target.rstrip("."))
+        if token.startswith("a"):
+            lookup_mechanisms.append(token)
+            target = token.split(":", 1)[1] if ":" in token else domain
+            records, _, _ = query_records(resolver, target, "A")
+            if check_ipv6:
+                v6, _, _ = query_records(resolver, target, "AAAA")
+                records.extend(v6)
+            if not records:
+                unresolved_a.append(target)
+        if token.startswith("mx"):
+            has_mx_mech = True
+            lookup_mechanisms.append(token)
+            target = token.split(":", 1)[1] if ":" in token else domain
+            mx_records, _, _ = query_records(resolver, target, "MX")
+            if not mx_records:
+                unresolved_mx.append(target)
+        if token.startswith("ip4:") or token.startswith("ip6:"):
+            cidr_entries.append(part)
+            raw_net = part.split(":", 1)[1]
+            try:
+                net = ipaddress.ip_network(raw_net, strict=False)
+                if allowlist and not any(net.subnet_of(allowed) for allowed in allowlist):
+                    cidr_outside.append(part)
+            except ValueError:
+                cidr_outside.append(part)
+        if token.endswith("all"):
+            all_mechanism = part
+
+    all_policy_ok = bool(re.fullmatch(spf_expect_all, all_mechanism)) if all_mechanism else False
+
+    return {
+        "has_ptr": has_ptr,
+        "has_multiple_spf": len(spf_records) > 1,
+        "lookup_estimate": spf_lookup_estimate(lookup_mechanisms),
+        "unresolved_a_mechanisms": unresolved_a,
+        "unresolved_mx_mechanisms": unresolved_mx,
+        "cidr_entries": cidr_entries,
+        "cidr_out_of_allowlist": cidr_outside,
+        "all_mechanism": all_mechanism,
+        "all_policy_ok": all_policy_ok,
+        "has_mx_mechanism": has_mx_mech,
+        "includes_mx_hosts": include_matches_mx,
+        "mx_covered": has_mx_mech or bool(include_matches_mx),
+    }
+
+
+def check_dnsbl(
+    resolver: dns.resolver.Resolver,
+    ip: str,
+    zones: List[str],
+    cache: Dict[str, Dict],
+    ttl: int,
+) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Returns tuple: (entries_all, entries_listed_only)
+    entries_all elements: {ip, zone, status, a, txt, error}
+    status in {NOT LISTED, LISTED, POLICY/ERROR, CHECK FAILED}
+    """
+
+    def _is_policy_answer(ans: str) -> bool:
+        try:
+            a = ipaddress.ip_address(ans)
+            # Common policy/error ranges used by DNSBL providers
+            if a.version == 4 and str(a).startswith("127.255."):
+                return True
+        except ValueError:
+            return False
+        return False
+
+    def _is_listed_answer(ans: str) -> bool:
+        try:
+            a = ipaddress.ip_address(ans)
+            if a.version == 4:
+                s = str(a)
+                return s.startswith("127.") and not s.startswith("127.255.")
+        except ValueError:
+            return False
+        return False
+
+    def _is_policy_txt(txts: List[str]) -> bool:
+        policy_markers = ["open resolver", "limit", "exceed", "blocked", "denied", "unauthor", "forbidden"]
+        return any(any(marker in t.lower() for marker in policy_markers) for t in txts)
+
+    entries_all: List[Dict] = []
+    listed_only: List[Dict] = []
+    now = int(time.time())
+
+    # Build resolver candidates: one per nameserver to allow fallback on POLICY/ERROR or CHECK FAILED
+    ns_list = getattr(resolver, "nameservers", []) or []
+    resolver_candidates: List[dns.resolver.Resolver] = []
+    if ns_list:
+        for ns in ns_list:
+            r = dns.resolver.Resolver(configure=False)
+            r.nameservers = [ns]
+            r.lifetime = resolver.lifetime
+            r.timeout = resolver.timeout
+            resolver_candidates.append(r)
+    else:
+        resolver_candidates = [resolver]
+
+    def _query_with_resolver(r: dns.resolver.Resolver, zone: str) -> Tuple[Dict, List[Dict]]:
+        query_name = f"{reverse_ipv4(ip)}.{zone}"
+        responses: List[str] = []
+        txt_answers: List[str] = []
+        error_msg: Optional[str] = None
+        nxdomain = False
+        noanswer = False
+
+        try:
+            answers = r.resolve(query_name, "A", raise_on_no_answer=False, search=False)
+            if answers.rrset:
+                responses = [r.to_text() for r in answers]
+            else:
+                if answers.response and answers.response.rcode() == dns.rcode.NXDOMAIN:
+                    nxdomain = True
+                else:
+                    noanswer = True
+        except dns.resolver.NXDOMAIN:
+            nxdomain = True
+        except dns.resolver.NoAnswer:
+            noanswer = True
+        except dns.exception.Timeout as exc:
+            error_msg = f"timeout: {exc}"
+        except dns.exception.DNSException as exc:
+            error_msg = str(exc)
+
+        if not nxdomain and not error_msg:
+            try:
+                txt_resp = r.resolve(query_name, "TXT", raise_on_no_answer=False, search=False)
+                if txt_resp.rrset:
+                    for rec in txt_resp:
+                        try:
+                            txt_answers.append(b"".join(rec.strings).decode("utf-8", errors="ignore"))
+                        except Exception:
+                            txt_answers.append(rec.to_text().strip('"'))
+                else:
+                    if txt_resp.response and txt_resp.response.rcode() == dns.rcode.NXDOMAIN:
+                        nxdomain = True
+            except dns.resolver.NXDOMAIN:
+                nxdomain = True
+            except dns.resolver.NoAnswer:
+                noanswer = True
+            except dns.exception.Timeout as exc:
+                if not error_msg:
+                    error_msg = f"timeout_txt: {exc}"
+            except dns.exception.DNSException as exc:
+                if not error_msg:
+                    error_msg = str(exc)
+
+        if error_msg:
+            status = "CHECK FAILED"
+            if not txt_answers:
+                txt_answers = [error_msg]
+        elif nxdomain:
+            status = "NOT LISTED"
+        elif responses or txt_answers:
+            listed_hit = any(_is_listed_answer(r) for r in responses)
+            policy_hit = _is_policy_txt(txt_answers) or any(_is_policy_answer(r) for r in responses)
+            if listed_hit:
+                status = "LISTED"
+            elif policy_hit:
+                status = "POLICY/ERROR"
+            else:
+                status = "LISTED"
+        else:
+            status = "CHECK FAILED"
+            if not txt_answers:
+                txt_answers = ["empty DNSBL response"]
+
+        entry = {"ip": ip, "zone": zone, "status": status, "a": responses, "txt": txt_answers}
+        if error_msg:
+            entry["error"] = error_msg
+        listed_for_entry: List[Dict] = []
+        if status == "LISTED":
+            listed_for_entry.append({"ip": ip, "zone": zone, "response": responses, "txt": txt_answers})
+        return entry, listed_for_entry
+
+    for zone in zones:
+        key = f"{ip}|{zone}"
+        cached = cache.get(key) if cache else None
+        if cached and now - cached.get("ts", 0) <= ttl:
+            status = cached.get("status", "NOT LISTED")
+            a_cached = cached.get("a", cached.get("response", []))
+            txt_cached = cached.get("txt", [])
+            error_cached = cached.get("error")
+            entry_cached = {"ip": ip, "zone": zone, "status": status, "a": a_cached, "txt": txt_cached}
+            if error_cached:
+                entry_cached["error"] = error_cached
+            entries_all.append(entry_cached)
+            if status == "LISTED":
+                listed_only.append({"ip": ip, "zone": zone, "response": a_cached, "txt": txt_cached})
+            continue
+
+        chosen_entry: Optional[Dict] = None
+        chosen_listed: List[Dict] = []
+        fallback_entry: Optional[Dict] = None
+        fallback_listed: List[Dict] = []
+
+        for r in resolver_candidates:
+            entry, listed_result = _query_with_resolver(r, zone)
+            if entry["status"] in ["LISTED", "NOT LISTED"]:
+                chosen_entry, chosen_listed = entry, listed_result
+                break
+            # Store first non-success for fallback if no good resolver found
+            if fallback_entry is None:
+                fallback_entry, fallback_listed = entry, listed_result
+
+        if chosen_entry is None:
+            chosen_entry = fallback_entry if fallback_entry else {"ip": ip, "zone": zone, "status": "CHECK FAILED", "a": [], "txt": ["no resolver result"]}
+            chosen_listed = fallback_listed
+
+        entries_all.append(chosen_entry)
+        cache[key] = {
+            "ts": now,
+            "status": chosen_entry.get("status"),
+            "a": chosen_entry.get("a", []),
+            "txt": chosen_entry.get("txt", []),
+            "error": chosen_entry.get("error"),
+        }
+        listed_only.extend(chosen_listed)
+
+    return entries_all, listed_only
+
+
+def build_lld(mx_data: List[Dict], ip_data: List[Dict], zones: List[str]) -> Dict:
+    return {
+        "lld_mx": {"data": [{"{#MXHOST}": mx["host"], "{#MXPRIO}": mx["prio"]} for mx in mx_data]},
+        "lld_mx_ip": {
+            "data": [
+                {"{#MXHOST}": entry["mx_host"], "{#MXIP}": entry["ip"], "{#PROTO}": entry["proto"]}
+                for entry in ip_data
+            ]
+        },
+        "lld_dnsbl_zones": {"data": [{"{#DNSBL_ZONE}": z} for z in zones]},
+    }
+
+
+def parse_dmarc(records: List[str]) -> Dict:
+    if not records:
+        return {"present": False, "raw": None, "p": None, "sp": None, "rua": None, "pct": None}
+    raw = records[0]
+    result = {"present": True, "raw": raw, "p": None, "sp": None, "rua": None, "pct": None}
+    parts = [p.strip() for p in raw.split(";") if p.strip()]
+    for part in parts:
+        if "=" in part:
+            key, val = [v.strip().lower() for v in part.split("=", 1)]
+            if key in ["p", "sp", "rua", "pct"]:
+                result[key] = val
+    return result
+
+
+def main() -> int:
+    def _to_int(val: str, fallback: int) -> int:
+        try:
+            return int(val)
+        except Exception:
+            return fallback
+
+    parser = argparse.ArgumentParser(description="Mail DNS audit external check.", allow_abbrev=False)
+    parser.add_argument("domain", help="Domain to audit")
+    parser.add_argument("resolver", nargs="?", default=DEFAULT_RESOLVER, help="DNS resolver")
+    parser.add_argument("dns_timeout", nargs="?", default=str(DEFAULT_TIMEOUT), help="DNS timeout seconds")
+    parser.add_argument("check_ipv6", nargs="?", default="0", help="Check AAAA (0/1)")
+    parser.add_argument("dnsbl_zones", nargs="?", default=",".join(DEFAULT_DNSBL_ZONES), help="DNSBL zones comma-separated")
+    parser.add_argument("cidr_allowlist", nargs="?", default="", help="Allowlist CIDRs comma-separated")
+    parser.add_argument("spf_max_lookups", nargs="?", default=str(DEFAULT_SPF_MAX_LOOKUPS), help="SPF lookup cap")
+    parser.add_argument("spf_expect_all", nargs="?", default=DEFAULT_SPF_EXPECT_ALL, help="Regex for SPF all")
+    parser.add_argument("dnsbl_cache_ttl", nargs="?", default=str(DEFAULT_DNSBL_CACHE_TTL), help="DNSBL cache TTL seconds")
+    parser.add_argument("max_mx", nargs="?", default=str(DEFAULT_MAX_MX), help="Max MX to check")
+    parser.add_argument("dnsbl_max_ip", nargs="?", default=str(DEFAULT_DNSBL_MAX_IP), help="Max total IPs to check in DNSBL")
+    parser.add_argument("dkim_selectors", nargs="?", default=",".join(DEFAULT_DKIM_SELECTORS), help="DKIM selector names comma-separated")
+    parser.add_argument("shuffle_resolvers", nargs="?", default="1", help="Shuffle resolver list to distribute load (0/1)")
+    parser.add_argument("--simulate", choices=["bad_spf", "dnsbl"], help="Return synthetic data for testing")
+    parser.add_argument("--dnsbl-test-ip", default="", help="Optional IPv4 used for DNSBL self-test (e.g., 127.0.0.2)")
+    args, extras = parser.parse_known_args()
+    simulate = args.simulate
+    if extras:
+        fields_order = [
+            "spf_expect_all",
+            "dnsbl_cache_ttl",
+            "max_mx",
+            "dnsbl_max_ip",
+            "dkim_selectors",
+            "shuffle_resolvers",
+        ]
+        for idx, val in enumerate(extras):
+            if idx >= len(fields_order):
+                break
+            setattr(args, fields_order[idx], val)
+
+    start = time.time()
+    domain = args.domain.strip()
+    dns_timeout = float(args.dns_timeout) if args.dns_timeout else DEFAULT_TIMEOUT
+    check_ipv6 = args.check_ipv6 == "1"
+    dnsbl_zones = [z.strip() for z in args.dnsbl_zones.split(",") if z.strip()]
+    allowlist = parse_allowlist(args.cidr_allowlist)
+    spf_max_lookups = _to_int(args.spf_max_lookups, DEFAULT_SPF_MAX_LOOKUPS)
+    spf_expect_all = args.spf_expect_all
+    dnsbl_cache_ttl = _to_int(args.dnsbl_cache_ttl, DEFAULT_DNSBL_CACHE_TTL)
+    max_mx = _to_int(args.max_mx, DEFAULT_MAX_MX)
+    dnsbl_max_ip = _to_int(args.dnsbl_max_ip, DEFAULT_DNSBL_MAX_IP)
+    dkim_selectors = [s.strip() for s in args.dkim_selectors.split(",") if s.strip()]
+    if not dkim_selectors:
+        dkim_selectors = DEFAULT_DKIM_SELECTORS
+    shuffle_resolvers = args.shuffle_resolvers == "1"
+    dnsbl_test_ip = args.dnsbl_test_ip.strip()
+
+    cache = load_cache(CACHE_PATH)
+    resolver = build_resolver(args.resolver, dns_timeout, shuffle_resolvers)
+    dnsbl_max_ip = max(0, dnsbl_max_ip)
+    if os.environ.get("DEBUG_DNSBL"):
+        print(
+            json.dumps(
+                {
+                    "argv": sys.argv,
+                    "dns_timeout": dns_timeout,
+                    "max_mx": max_mx,
+                    "dnsbl_max_ip": dnsbl_max_ip,
+                    "dnsbl_zones": dnsbl_zones,
+                }
+            ),
+            file=sys.stderr,
+        )
+
+    if simulate:
+        simulated = {
+            "mx": [],
+            "spf": ["v=spf1 include:example.com ptr ~all"],
+            "spf_analysis": {
+                "has_ptr": True,
+                "has_multiple_spf": True,
+                "lookup_estimate": spf_max_lookups + 5,
+                "unresolved_a_mechanisms": ["broken.a.example"],
+                "unresolved_mx_mechanisms": ["broken.mx.example"],
+                "cidr_entries": ["203.0.113.0/24"],
+                "cidr_out_of_allowlist": ["203.0.113.0/24"],
+                "all_mechanism": "~all",
+                "all_policy_ok": False,
+            },
+            "snapshots": {
+                "mx_hash": "sim-mx",
+                "spf_hash": "sim-spf",
+                "dmarc_hash": "sim-dmarc",
+                "dkim_hash": "sim-dkim",
+                "ds_hash": "sim-ds",
+                "ns_hash": "sim-ns",
+                "soa": {"serial": "0", "hash": "sim-soa"},
+            },
+            "dnssec": {"ds_present": False, "ad_flag": False},
+            "dnsbl": {
+                "checked_ips": ["127.0.0.2"],
+                "zones": dnsbl_zones,
+                "entries": [
+                    {
+                        "ip": "127.0.0.2",
+                        "zone": dnsbl_zones[0] if dnsbl_zones else "dnsbl.local",
+                        "status": "LISTED",
+                        "a": ["127.0.0.2"],
+                        "txt": ["simulated listing"]
+                    }
+                ],
+                "listed": [
+                    {
+                        "ip": "127.0.0.2",
+                        "zone": dnsbl_zones[0] if dnsbl_zones else "dnsbl.local",
+                        "response": ["127.0.0.2"],
+                        "txt": ["simulated listing"]
+                    }
+                ],
+                "listed_count": 1,
+            },
+            "meta": {
+                "resolver_used": args.resolver,
+                "query_time_ms": int((time.time() - start) * 1000),
+                "timestamp": int(time.time()),
+                "error": None,
+                "version": VERSION,
+            },
+        }
+        lld = build_lld([], [], dnsbl_zones)
+        simulated.update(lld)
+        print(json.dumps(simulated, ensure_ascii=True, separators=(",", ":")))
+        return 0
+
+    result = {
+        "mx": [],
+        "spf": [],
+        "spf_analysis": {},
+        "snapshots": {},
+        "dnssec": {"ds_present": False, "ad_flag": False},
+        "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
+        "meta": {
+            "resolver_used": args.resolver,
+            "query_time_ms": 0,
+            "timestamp": int(time.time()),
+            "error": "",
+            "version": VERSION,
+        },
+    }
+
+    try:
+        mx_records, _, ad_flag = query_records(resolver, domain, "MX")
+        mx_list = []
+        for mx in mx_records:
+            parts = mx.split()
+            if len(parts) != 2:
+                continue
+            prio = int(parts[0])
+            host = parts[1].rstrip(".")
+            if not host or host == "":
+                continue
+            if host == ".":
+                continue
+            mx_list.append({"host": host, "prio": prio, "a": [], "aaaa": [], "ttl": None})
+        mx_list = sorted(mx_list, key=lambda x: x["prio"])[:max_mx]
+
+        ip_entries: List[Dict] = []
+
+        for mx in mx_list:
+            a_records, ttl, ad_flag_a = query_records(resolver, mx["host"], "A")
+            mx["ttl"] = ttl
+            mx["a"] = a_records[:DEFAULT_MAX_IP_PER_MX]
+            result["dnssec"]["ad_flag"] = result["dnssec"]["ad_flag"] or ad_flag_a
+            if check_ipv6:
+                aaaa_records, _, ad_flag_aaaa = query_records(resolver, mx["host"], "AAAA")
+                mx["aaaa"] = aaaa_records[:DEFAULT_MAX_IP_PER_MX]
+                result["dnssec"]["ad_flag"] = result["dnssec"]["ad_flag"] or ad_flag_aaaa
+
+            for ip in mx["a"]:
+                ip_entries.append({"mx_host": mx["host"], "ip": ip, "proto": "A"})
+            if check_ipv6:
+                for ip in mx["aaaa"]:
+                    ip_entries.append({"mx_host": mx["host"], "ip": ip, "proto": "AAAA"})
+
+        result["mx"] = mx_list
+
+        txt_records, _, _ = query_records(resolver, domain, "TXT")
+        spf_records = [t for t in txt_records if t.lower().startswith("v=spf1")]
+        result["spf"] = spf_records
+        result["spf_analysis"] = parse_spf(
+            domain,
+            spf_records,
+            resolver,
+            allowlist,
+            check_ipv6,
+            dns_timeout,
+            spf_expect_all,
+            [m["host"] for m in mx_list],
+        )
+
+        try:
+            ds_records, _, _ = query_records(resolver, domain, "DS")
+            result["dnssec"]["ds_present"] = bool(ds_records)
+        except dns.exception.DNSException:
+            result["dnssec"]["ds_present"] = False
+
+        checked_ips: List[str] = []
+        listed: List[Dict] = []
+        entries: List[Dict] = []
+        if dnsbl_max_ip > 0:
+            limited_ip_entries = ip_entries[:dnsbl_max_ip]
+        else:
+            limited_ip_entries = ip_entries
+        for entry in limited_ip_entries:
+            ip = entry["ip"]
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            if ip_obj.version == 6 and not check_ipv6:
+                continue
+            if ip_obj.version == 6:
+                continue
+            checked_ips.append(ip)
+            entries_all, listed_only = check_dnsbl(resolver, ip, dnsbl_zones, cache, dnsbl_cache_ttl)
+            entries.extend(entries_all)
+            listed.extend(listed_only)
+
+        result["dnsbl"]["checked_ips"] = checked_ips
+        result["dnsbl"]["entries"] = entries
+        result["dnsbl"]["listed"] = listed
+        result["dnsbl"]["listed_count"] = len(listed)
+
+        if dnsbl_test_ip:
+            test_entries, test_listed = check_dnsbl(resolver, dnsbl_test_ip, dnsbl_zones, cache, dnsbl_cache_ttl)
+            result["dnsbl"]["test"] = {"ip": dnsbl_test_ip, "entries": test_entries, "listed": test_listed}
+
+        # Human-readable DNSBL summary for listed_details item
+        summary_parts = []
+        for entry in entries:
+            if entry["status"] == "LISTED":
+                resp_str = ",".join(entry["a"])
+                txt_str = "; ".join(entry["txt"])
+                summary_parts.append(f"IP: {entry['ip']}, Zone: {entry['zone']}, Code: {resp_str}, Reason: {txt_str}")
+            elif entry["status"] == "POLICY/ERROR":
+                summary_parts.append(f"IP: {entry['ip']}, Zone: {entry['zone']}, Policy: {'; '.join(entry['txt'])}")
+            elif entry["status"] == "CHECK FAILED":
+                fail_reason = "; ".join(entry.get("txt", [])) or entry.get("error", "")
+                summary_parts.append(f"IP: {entry['ip']}, Zone: {entry['zone']}, Check failed: {fail_reason}")
+        result["dnsbl"]["summary"] = " | ".join(summary_parts) if summary_parts else "No listings or policy blocks"
+
+        # DMARC
+        dmarc_records, _, _ = query_records(resolver, f"_dmarc.{domain}", "TXT")
+        dmarc_txt = [r for r in dmarc_records if r.lower().startswith("v=dmarc1")]
+        result["dmarc"] = parse_dmarc(dmarc_txt)
+
+        # DKIM selectors
+        dkim_records: List[str] = []
+        for sel in dkim_selectors:
+            recs, _, _ = query_records(resolver, f"{sel}._domainkey.{domain}", "TXT")
+            for r in recs:
+                dkim_records.append(f"{sel}:{r}")
+
+        # NS, SOA
+        ns_records, _, _ = query_records(resolver, domain, "NS")
+        soa_records, _, _ = query_records(resolver, domain, "SOA")
+        soa_serial = ""
+        if soa_records:
+            try:
+                soa_serial = soa_records[0].split()[2]
+            except Exception:
+                soa_serial = ""
+
+        # Snapshots/hashes
+        def _stable_list(items: List[str]) -> List[str]:
+            return sorted(set(items))
+
+        def _hash(items: List[str]) -> str:
+            joined = "|".join(_stable_list(items))
+            return hashlib.sha256(joined.encode("utf-8")).hexdigest() if joined else ""
+
+        mx_hash_source = [f"{m['prio']} {m['host']}" for m in mx_list]
+        result["snapshots"] = {
+            "mx_hash": _hash(mx_hash_source),
+            "spf_hash": _hash(spf_records),
+            "dmarc_hash": _hash(dmarc_txt),
+            "dkim_hash": _hash(dkim_records),
+            "ds_hash": _hash(ds_records if 'ds_records' in locals() else []),
+            "ns_hash": _hash(ns_records),
+            "soa": {"serial": soa_serial, "hash": _hash([soa_serial])},
+        }
+
+        lld = build_lld(mx_list, ip_entries, dnsbl_zones)
+        result.update(lld)
+
+    except Exception as exc:  # pragma: no cover
+        result["meta"]["error"] = str(exc)
+
+    result["meta"]["query_time_ms"] = int((time.time() - start) * 1000)
+
+    save_cache(CACHE_PATH, cache)
+    print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

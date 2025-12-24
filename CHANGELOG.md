@@ -1,0 +1,63 @@
+# Changelog
+All notable changes to this project will be documented in this file.
+
+## [0.1.15] - 2025-12-24
+- Добавлен macro {$DNS_SHUFFLE} (по умолчанию 1) для управления перемешиванием списка резолверов в скрипте и шаблоне; ключи обновлены.
+- Версии скрипта и шаблона повышены до 0.1.15; описание шаблона обновлено.
+- Расширено описание {$DNS_RESOLVER}: пустое значение использует системный resolv.conf; рекомендован локальный рекурсор для DNSBL; упомянута связь с {$DNS_SHUFFLE}.
+
+## [0.1.14] - 2025-12-24
+- Добавлена ротация (shuffle) списка DNS-резолверов для распределения нагрузки между серверами.
+- Обновлена версия скрипта.
+
+## [0.1.13] - 2025-12-24
+- DNSBL fallback: on POLICY/ERROR or CHECK FAILED, script retries other resolvers from {$DNS_RESOLVER} and accepts LISTED/NOT LISTED if any resolver responds normally.
+- Warnings updated: advise using trusted/non-public resolvers; trigger description adjusted.
+- Script version set to 0.1.13.
+
+## [0.1.12] - 2025-12-24
+- Fixed DNS slow trigger name to avoid double "ms" suffix (min 5m={ITEM.LASTVALUE1}).
+
+## [0.1.11] - 2025-12-24
+- Added trigger to detect non-JSON external script output (e.g., missing python3) with remediation steps.
+- Template version bumped to 0.1.11.
+
+## [0.1.10] - 2025-12-24
+- Added repository link to template description (https://github.com/IT-for-Prof/zabbix-mail-dns-audit) and version 0.1.10 macro.
+
+## [0.1.9] - 2025-12-24
+- Master item mail.dns.audit now runs hourly (delay 1h) and stores history 1d to reduce load.
+- Template version bumped to 0.1.9 (description and {$TEMPLATE_VERSION} macro).
+
+## [0.1.8] - 2025-12-24
+- Added explicit versioning: script VERSION meta field and template macro {$TEMPLATE_VERSION}=0.1.8.
+- DNSBL test/self-reporting now includes script version in meta for downstream items.
+
+## [0.1.7] - 2025-12-24
+- DNSBL classification aligned with Spamhaus semantics: NXDOMAIN -> NOT LISTED; empty/NOANSWER/SERVFAIL/timeouts -> CHECK FAILED; 127.255.* policy codes -> POLICY/ERROR; listed codes unchanged.
+- Added DNSBL policy/error and check-failed counters with dedicated triggers and improved DNSBL health calculation (now fails on policy/error/check failed).
+- Added optional DNSBL self-test IP flag to external script for validating listed/not-listed handling.
+
+## [0.1.6] - 2025-12-22
+- Implemented Zabbix 7.0 Dashboard "Mail DNS Audit Overview" with Gauges and problem monitoring.
+- Added numeric health metrics (DMARC score, SPF health, DNSBL health) for better visualization and indicator widgets.
+- Established trigger dependencies to suppress noise during script execution failures.
+- Ensured template dashboard compatibility with Zabbix 7.0 by using relative item references.
+
+## [0.1.3] - 2025-12-22
+- Improved DNSBL triggers informativeness: added TXT explanation/technical error to POLICY/ERROR and CHECK FAILED alerts via {ITEM.LASTVALUE2}.
+- Script now includes technical error messages in the TXT field for CHECK FAILED status.
+
+## [0.1.2] - 2025-12-22
+- Added DNSBL A+TXT collection with normalized statuses (LISTED / POLICY/ERROR / CHECK FAILED / NOT LISTED) in mail.dns.audit.
+- Extended template with per-IP DNSBL status and TXT items plus dedicated triggers for policy/error and check failure.
+
+## [0.1.1] - 2025-12-22
+- Fixed DNSBL trigger prototype to display the actual DNSBL zone name in alerts.
+
+## [0.1.0] - 2025-12-21
+- Added mail.dns.audit external Python check (DNS, SPF, DNSBL, DNSSEC).
+- Added Zabbix 7 template Template Mail DNS Audit Zabbix7 with dependent items, LLD, triggers.
+- Installed Python 3 + dnspython in zabbix-server container and deployed script.
+- Created hosts for test domains with template applied.
+
