@@ -1,7 +1,7 @@
 zabbix_export:
   version: '7.0'
   template_groups:
-    - uuid: 7df96b18c230490a9a0a9e2307226338
+    - uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
       name: Templates/Applications
   templates:
     - uuid: 5f2a484eee7342a7bf440c60fcebca00
@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.15
+        Version: 0.1.16
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -64,7 +64,7 @@ zabbix_export:
           value: 'default'
           description: 'Comma-separated list of DKIM selectors to monitor for changes.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: '0.1.15'
+          value: '0.1.16'
           description: 'Template version identifier for Mail DNS Audit.'
         - macro: '{$DNS_SHUFFLE}'
           value: '1'

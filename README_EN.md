@@ -190,7 +190,7 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.15` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.16` | Template version |
 
 ## Usage
 
@@ -334,6 +334,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.16** (2025-12-24): Removed UUIDs from template for portability.
 - **v0.1.15** (2025-12-24): Added resolver shuffle control via `{$DNS_SHUFFLE}` macro
 - **v0.1.13** (2025-12-24): DNSBL fallback via alternate resolvers
 - **v0.1.10** (2025-12-24): GitHub repository link in description

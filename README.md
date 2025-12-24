@@ -190,7 +190,7 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM |
-| `{$TEMPLATE_VERSION}` | `0.1.15` | Версия шаблона |
+| `{$TEMPLATE_VERSION}` | `0.1.16` | Версия шаблона |
 
 ## Использование
 
@@ -334,6 +334,7 @@ Triggers & Alerts
 Полная история: [CHANGELOG.md](CHANGELOG.md)
 
 Последние обновления:
+- **v0.1.16** (2025-12-24): Удалены UUID из шаблона для портативности.
 - **v0.1.15** (2025-12-24): Добавлен shuffle контроль резолверов через макрос `{$DNS_SHUFFLE}`
 - **v0.1.13** (2025-12-24): DNSBL fallback через альтернативные резолверы
 - **v0.1.10** (2025-12-24): Ссылка на GitHub репозиторий в описании
