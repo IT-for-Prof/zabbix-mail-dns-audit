@@ -940,9 +940,6 @@ zabbix_export:
               priority: HIGH
               manual_close: 'YES'
               description: 'Alert when an MX IP address is found in a blackhole list.'
-              dependencies:
-                - name: 'External script error: {ITEM.LASTVALUE}'
-                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
               tags:
                 - tag: component
                   value: mail-dns
@@ -952,9 +949,6 @@ zabbix_export:
               priority: WARNING
               manual_close: 'YES'
               description: 'Alert when a DNSBL provider blocks your query due to policy (e.g., open resolver, rate limits).'
-              dependencies:
-                - name: 'External script error: {ITEM.LASTVALUE}'
-                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
               tags:
                 - tag: component
                   value: mail-dns
@@ -964,9 +958,6 @@ zabbix_export:
               priority: WARNING
               manual_close: 'YES'
               description: 'Alert when a technical failure (e.g., timeout) occurs during a DNSBL check.'
-              dependencies:
-                - name: 'External script error: {ITEM.LASTVALUE}'
-                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
               tags:
                 - tag: component
                   value: mail-dns
