@@ -3,7 +3,7 @@
 ![Zabbix 7.0+](https://img.shields.io/badge/Zabbix-7.0%2B-blue)
 ![Python 3.6+](https://img.shields.io/badge/Python-3.6%2B-green)
 
-Monitor email domain infrastructure in Zabbix: MX, SPF, DMARC, DKIM, DNSBL, DNSSEC.
+Monitor email domain infrastructure in Zabbix: MX, SPF, DMARC, DKIM, DNSBL, DNSSEC, PTR/FCrDNS for MX.
 
 **Author:** itforprof.com by Konstantin Tyutyunnik
 
@@ -25,6 +25,7 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 - ✅ DKIM key tracking
 - ✅ DNSBL checking (statuses: LISTED, NOT LISTED, POLICY/ERROR, CHECK FAILED)
 - ✅ DNSSEC validation (DS records, AD flags)
+- ✅ PTR/FCrDNS checks for MX (missing PTR, FCrDNS mismatch, generic PTR)
 - ✅ IPv6 support (optional)
 - ✅ Multiple DNS resolvers with shuffling
 - ✅ Local result caching

@@ -21,7 +21,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.18"
+VERSION = "0.1.19"
 
 DEFAULT_RESOLVER = "1.1.1.1"
 DEFAULT_TIMEOUT = 3.0
@@ -36,6 +36,27 @@ DEFAULT_MAX_IP_PER_MX = 5
 DEFAULT_DNSBL_MAX_IP = 5
 DEFAULT_DKIM_SELECTORS = ["default"]
 CACHE_PATH = "/tmp/mail_dns_audit_cache.json"
+
+
+# Heuristic: PTR that looks generic/dynamic should be flagged
+GENERIC_PTR_MARKERS = [
+    "dynamic",
+    "dyn-",
+    ".dyn.",
+    "broadband",
+    "dsl",
+    "dialup",
+    "pool",
+    "pppoe",
+    "dhcp",
+    "customer",
+    "clients",
+    "static-",
+    "static.",
+    "vps",
+    "cloud",
+    "compute",
+]
 
 
 def load_cache(path: str) -> Dict[str, Dict]:
@@ -227,6 +248,46 @@ def parse_spf(
         "includes_mx_hosts": include_matches_mx,
         "mx_covered": has_mx_mech or bool(include_matches_mx),
     }
+
+
+def _is_generic_ptr(hostname: str) -> bool:
+    hn = hostname.lower()
+    # IP-like hostname e.g., 1-2-3-4.example, ip-1-2-3-4
+    if re.search(r"(ip|host|node)[-_]?\d{1,3}[-.]\d{1,3}[-.]\d{1,3}[-.]\d{1,3}", hn):
+        return True
+    # Octets separated by dots without letters
+    if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", hn):
+        return True
+    # Common generic markers
+    return any(marker in hn for marker in GENERIC_PTR_MARKERS)
+
+
+def check_ptr_fcrdns(resolver: dns.resolver.Resolver, ip: str, check_ipv6: bool) -> Dict:
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.version == 6 and not check_ipv6:
+            return {"ip": ip, "status": "SKIP_IPV6"}
+    except ValueError:
+        return {"ip": ip, "status": "ERROR", "error": "invalid_ip"}
+
+    try:
+        rev = dns.reversename.from_address(ip)
+        ptr_records, _, _ = query_records(resolver, str(rev), "PTR")
+        if not ptr_records:
+            return {"ip": ip, "status": "MISSING"}
+        ptr_host = ptr_records[0].rstrip(".")
+        a_records, _, _ = query_records(resolver, ptr_host, "A")
+        match = ip in [a.rstrip(".") for a in a_records]
+        generic = _is_generic_ptr(ptr_host)
+        if generic:
+            status = "GENERIC"
+        elif not match:
+            status = "NO_FCRDNS"
+        else:
+            status = "OK"
+        return {"ip": ip, "status": status, "ptr": ptr_host, "a": a_records, "match": match}
+    except Exception as exc:
+        return {"ip": ip, "status": "ERROR", "error": str(exc)}
 
 
 def check_dnsbl(
@@ -460,18 +521,36 @@ def main() -> int:
     args, extras = parser.parse_known_args()
     simulate = args.simulate
     if extras:
-        fields_order = [
-            "spf_expect_all",
-            "dnsbl_cache_ttl",
-            "max_mx",
-            "dnsbl_max_ip",
-            "dkim_selectors",
-            "shuffle_resolvers",
-        ]
-        for idx, val in enumerate(extras):
-            if idx >= len(fields_order):
-                break
-            setattr(args, fields_order[idx], val)
+        # Positional value starting with '-' (e.g., -all|~all) is treated as an extra.
+        # Fall back to manual positional mapping to avoid shifts that break later args.
+        argv = sys.argv[1:]
+        if len(argv) >= 12:
+            args.domain = argv[0]
+            args.resolver = argv[1] if len(argv) > 1 else args.resolver
+            args.dns_timeout = argv[2] if len(argv) > 2 else args.dns_timeout
+            args.check_ipv6 = argv[3] if len(argv) > 3 else args.check_ipv6
+            args.dnsbl_zones = argv[4] if len(argv) > 4 else args.dnsbl_zones
+            args.cidr_allowlist = argv[5] if len(argv) > 5 else args.cidr_allowlist
+            args.spf_max_lookups = argv[6] if len(argv) > 6 else args.spf_max_lookups
+            args.spf_expect_all = argv[7] if len(argv) > 7 else args.spf_expect_all
+            args.dnsbl_cache_ttl = argv[8] if len(argv) > 8 else args.dnsbl_cache_ttl
+            args.max_mx = argv[9] if len(argv) > 9 else args.max_mx
+            args.dnsbl_max_ip = argv[10] if len(argv) > 10 else args.dnsbl_max_ip
+            args.dkim_selectors = argv[11] if len(argv) > 11 else args.dkim_selectors
+            args.shuffle_resolvers = argv[12] if len(argv) > 12 else args.shuffle_resolvers
+        else:
+            fields_order = [
+                "spf_expect_all",
+                "dnsbl_cache_ttl",
+                "max_mx",
+                "dnsbl_max_ip",
+                "dkim_selectors",
+                "shuffle_resolvers",
+            ]
+            for idx, val in enumerate(extras):
+                if idx >= len(fields_order):
+                    break
+                setattr(args, fields_order[idx], val)
 
     start = time.time()
 
@@ -657,6 +736,7 @@ def main() -> int:
         checked_ips: List[str] = []
         listed: List[Dict] = []
         entries: List[Dict] = []
+        ptr_entries: List[Dict] = []
         if dnsbl_max_ip > 0:
             limited_ip_entries = ip_entries[:dnsbl_max_ip]
         else:
@@ -675,11 +755,25 @@ def main() -> int:
             entries_all, listed_only = check_dnsbl(resolver, ip, dnsbl_zones, cache, dnsbl_cache_ttl)
             entries.extend(entries_all)
             listed.extend(listed_only)
+            ptr_entries.append(check_ptr_fcrdns(resolver, ip, check_ipv6))
 
         result["dnsbl"]["checked_ips"] = checked_ips
         result["dnsbl"]["entries"] = entries
         result["dnsbl"]["listed"] = listed
         result["dnsbl"]["listed_count"] = len(listed)
+        # PTR summary
+        ptr_missing = sum(1 for p in ptr_entries if p.get("status") == "MISSING")
+        ptr_no_fcrdns = sum(1 for p in ptr_entries if p.get("status") == "NO_FCRDNS")
+        ptr_generic = sum(1 for p in ptr_entries if p.get("status") == "GENERIC")
+        ptr_errors = sum(1 for p in ptr_entries if p.get("status") == "ERROR")
+        result["ptr"] = {
+            "entries": ptr_entries,
+            "missing": ptr_missing,
+            "no_fcrdns": ptr_no_fcrdns,
+            "generic": ptr_generic,
+            "errors": ptr_errors,
+            "checked": len(ptr_entries),
+        }
 
         if dnsbl_test_ip:
             test_entries, test_listed = check_dnsbl(resolver, dnsbl_test_ip, dnsbl_zones, cache, dnsbl_cache_ttl)

@@ -3,7 +3,7 @@
 ![Zabbix 7.0+](https://img.shields.io/badge/Zabbix-7.0%2B-blue)
 ![Python 3.6+](https://img.shields.io/badge/Python-3.6%2B-green)
 
-Мониторинг почтовой инфраструктуры доменов в Zabbix: MX, SPF, DMARC, DKIM, DNSBL, DNSSEC.
+Мониторинг почтовой инфраструктуры доменов в Zabbix: MX, SPF, DMARC, DKIM, DNSBL, DNSSEC, PTR/FCrDNS для MX.
 
 **Автор:** itforprof.com by Konstantin Tyutyunnik
 
@@ -25,6 +25,7 @@ Zabbix Mail DNS Audit — интегрированное решение для �
 - ✅ Отслеживание DKIM ключей
 - ✅ Проверка DNSBL (со статусами: LISTED, NOT LISTED, POLICY/ERROR, CHECK FAILED)
 - ✅ Валидация DNSSEC (DS записи, AD флаги)
+- ✅ Проверка PTR/FCrDNS для MX (отсутствие PTR, несходимость, generic PTR)
 - ✅ Поддержка IPv6 (опционально)
 - ✅ Несколько DNS резолверов с перемешиванием
 - ✅ Локальное кэширование результатов

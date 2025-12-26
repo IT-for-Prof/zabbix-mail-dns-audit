@@ -11,6 +11,11 @@ All notable changes to this project will be documented in this file.
 - Макрос {$MAIL_DNS_NODATA_SEC}=1800 сек для порога отсутствия данных.
 - Версии шаблона/доков повышены до 0.1.18.
 
+## [0.1.19] - 2025-12-26
+- Добавлены проверки PTR/FCrDNS для MX IP: статусы MISSING/NO_FCRDNS/GENERIC/OK, сводка в JSON.
+- Новый dependent items: mail.ptr.missing.count, mail.ptr.nofcrdns.count, mail.ptr.generic.count; триггеры на отсутствие PTR (HIGH), FCrDNS fail (WARNING), generic PTR (INFO).
+- Версия скрипта и шаблона повышена до 0.1.19.
+
 ## [0.1.16] - 2025-12-24
 - Исправлена проблема импорта шаблона ("Template group already exists") путем сопоставления UUID группы `Templates/Applications`.
 - Версии скрипта и шаблона повышены до 0.1.16.
