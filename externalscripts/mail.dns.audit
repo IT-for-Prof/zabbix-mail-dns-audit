@@ -474,6 +474,7 @@ def main() -> int:
             setattr(args, fields_order[idx], val)
 
     start = time.time()
+
     domain = args.domain.strip()
     dns_timeout = float(args.dns_timeout) if args.dns_timeout else DEFAULT_TIMEOUT
     check_ipv6 = args.check_ipv6 == "1"

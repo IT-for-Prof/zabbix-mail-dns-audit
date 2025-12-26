@@ -436,6 +436,45 @@ zabbix_export:
         value: mail-dns
       - tag: Application
         value: Mail DNS
+      - uuid: c1d2e3f4a5b697887766554433221100
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.present)=0'
+        name: 'DKIM record missing'
+        priority: HIGH
+        description: 'No DKIM TXT records were found for the configured selectors. Publish at least one DKIM key (TXT at selector._domainkey.<domain>).'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: d2e3f4a5b6c7988877665544332211aa
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnssec.ds_present)=0'
+        name: 'DNSSEC DS missing'
+        priority: INFORMATION
+        description: 'No DNSSEC DS records detected for the domain. If DNSSEC is expected, publish DS at the registrar.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: e3f4a5b6c7d8988877665544332211bb
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnssec.ad_flag)=0'
+        name: 'DNSSEC AD flag missing'
+        priority: INFORMATION
+        description: 'Resolver responses were not validated with DNSSEC (AD flag not set). Ensure validating resolver or check DNSSEC chain.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
     - uuid: 194568ad5974479dadcbeb72479625e7
       name: 'MX count'
       key: mail.mx.count
@@ -950,6 +989,24 @@ zabbix_export:
       tags:
       - tag: Application
         value: Mail DNS
+    - uuid: 649b0f9e7c4c4c1c8b19e5d9c0a7f6b2
+      name: 'DKIM present'
+      key: mail.dkim.present
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.snapshots.dkim_hash
+      - type: JAVASCRIPT
+        parameters:
+        - 'return (value && value.length > 0) ? 1 : 0;'
+      description: 'Flag: at least one DKIM TXT record found for configured selectors (1 = present, 0 = missing).'
+      tags:
+      - tag: Application
+        value: Mail DNS
     - uuid: da1dc05462404de5a9826aea2d6a8ab9
       name: 'DS hash'
       key: mail.ds.hash
@@ -963,6 +1020,38 @@ zabbix_export:
         parameters:
         - $.snapshots.ds_hash
       description: 'Stable hash of DNSSEC Delegation Signer (DS) records.'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: 5d7e9c4a1b0f4c2d8e7f6a5b4c3d2e1f
+      name: 'DNSSEC DS present'
+      key: mail.dnssec.ds_present
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.dnssec.ds_present
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: DS records found for the domain (1 = yes, 0 = missing).'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: 0a1b2c3d4e5f60718293a4b5c6d7e8f9
+      name: 'DNSSEC AD flag'
+      key: mail.dnssec.ad_flag
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.dnssec.ad_flag
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: resolver returned Authenticated Data (AD) for queried records (1 = validation succeeded, 0 = not validated/no AD).'
       tags:
       - tag: Application
         value: Mail DNS
