@@ -21,7 +21,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.19"
+VERSION = "0.1.21"
 
 DEFAULT_RESOLVER = "1.1.1.1"
 DEFAULT_TIMEOUT = 3.0
@@ -174,6 +174,8 @@ def parse_spf(
     cidr_outside: List[str] = []
     lookup_mechanisms: List[str] = []
     all_mechanism = ""
+    plus_all = False
+    neutral_all = False
     has_mx_mech = False
     include_matches_mx: List[str] = []
 
@@ -188,6 +190,8 @@ def parse_spf(
             "cidr_out_of_allowlist": [],
             "all_mechanism": "",
             "all_policy_ok": False,
+            "plus_all": False,
+            "neutral_all": False,
             "has_mx_mechanism": False,
             "includes_mx_hosts": [],
             "mx_covered": False,
@@ -231,6 +235,11 @@ def parse_spf(
                 cidr_outside.append(part)
         if token.endswith("all"):
             all_mechanism = part
+            tok_clean = token
+            if tok_clean == "all" or tok_clean.startswith("+all"):
+                plus_all = True
+            if tok_clean.startswith("?all"):
+                neutral_all = True
 
     all_policy_ok = bool(re.fullmatch(spf_expect_all, all_mechanism)) if all_mechanism else False
 
@@ -244,10 +253,89 @@ def parse_spf(
         "cidr_out_of_allowlist": cidr_outside,
         "all_mechanism": all_mechanism,
         "all_policy_ok": all_policy_ok,
+        "plus_all": plus_all,
+        "neutral_all": neutral_all,
         "has_mx_mechanism": has_mx_mech,
         "includes_mx_hosts": include_matches_mx,
         "mx_covered": has_mx_mech or bool(include_matches_mx),
     }
+
+
+def check_transport(resolver: dns.resolver.Resolver, domain: str) -> Dict:
+    """
+    Check MTA-STS and TLS-RPT TXT records.
+    Returns:
+    {
+      "mta_sts": {"present": bool, "txt": [...]},
+      "tls_rpt": {"present": bool, "txt": [...]}
+    }
+    """
+    mta_txt, _, _ = query_records(resolver, f"_mta-sts.{domain}", "TXT")
+    tls_txt, _, _ = query_records(resolver, f"_smtp._tls.{domain}", "TXT")
+    return {
+        "mta_sts": {"present": len(mta_txt) > 0, "txt": mta_txt},
+        "tls_rpt": {"present": len(tls_txt) > 0, "txt": tls_txt},
+    }
+
+
+def check_bimi(resolver: dns.resolver.Resolver, domain: str) -> Dict:
+    """
+    Check BIMI TXT record at default._bimi.{domain}.
+    Returns: {"present": bool, "txt": [...]}
+    """
+    bimi_txt, _, _ = query_records(resolver, f"default._bimi.{domain}", "TXT")
+    return {"present": len(bimi_txt) > 0, "txt": bimi_txt}
+
+
+def check_ns_sync(
+    resolver: dns.resolver.Resolver, domain: str, check_ipv6: bool, timeout: float
+) -> Dict:
+    """
+    Fetch NS records, resolve each NS to IP, query SOA serial via that NS.
+    Returns:
+    {
+      "entries": [{"ns": host, "ip": ip, "serial": serial, "status": "..."}],
+      "consistent": bool,
+      "mismatch": int
+    }
+    """
+    ns_records, _, _ = query_records(resolver, domain, "NS")
+    entries: List[Dict] = []
+    serials: List[str] = []
+
+    for ns in ns_records:
+        ns_host = ns.rstrip(".")
+        # resolve NS host to IPs
+        ns_ips, _, _ = query_records(resolver, ns_host, "A")
+        if check_ipv6:
+            ns_aaaa, _, _ = query_records(resolver, ns_host, "AAAA")
+            ns_ips.extend(ns_aaaa)
+        if not ns_ips:
+            entries.append({"ns": ns_host, "ip": None, "serial": None, "status": "NO_IP"})
+            continue
+        ip = ns_ips[0]
+        ns_resolver = dns.resolver.Resolver(configure=False)
+        ns_resolver.nameservers = [ip]
+        ns_resolver.lifetime = timeout
+        ns_resolver.timeout = timeout
+        try:
+            soa_answers, _, _ = query_records(ns_resolver, domain, "SOA")
+            if soa_answers:
+                try:
+                    serial = soa_answers[0].split()[2]
+                except Exception:
+                    serial = ""
+                serials.append(serial)
+                entries.append({"ns": ns_host, "ip": ip, "serial": serial, "status": "OK"})
+            else:
+                entries.append({"ns": ns_host, "ip": ip, "serial": None, "status": "NO_SOA"})
+        except Exception as exc:
+            entries.append({"ns": ns_host, "ip": ip, "serial": None, "status": f"ERROR:{exc}"})
+
+    uniq_serials = [s for s in set(serials) if s != ""]
+    consistent = len(uniq_serials) <= 1
+    mismatch = 0 if consistent else max(len(serials) - 1, 0)
+    return {"entries": entries, "consistent": consistent, "mismatch": mismatch}
 
 
 def _is_generic_ptr(hostname: str) -> bool:
@@ -641,6 +729,12 @@ def main() -> int:
                 "error": None,
                 "version": VERSION,
             },
+            "transport": {
+                "mta_sts": {"present": False, "txt": []},
+                "tls_rpt": {"present": False, "txt": []},
+            },
+            "bimi": {"present": False, "txt": []},
+            "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
         }
         lld = build_lld([], [], dnsbl_zones)
         simulated.update(lld)
@@ -661,6 +755,9 @@ def main() -> int:
         "snapshots": {},
         "dnssec": {"ds_present": False, "ad_flag": False},
         "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
+        "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
+        "bimi": {"present": False, "txt": []},
+        "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
         "duplicates": {
             "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
             "dmarc": {"has_duplicates": False, "count": 0},
@@ -798,6 +895,12 @@ def main() -> int:
         dmarc_txt = [r for r in dmarc_records if r.lower().startswith("v=dmarc1")]
         result["dmarc"] = parse_dmarc(dmarc_txt)
 
+        # Transport security: MTA-STS / TLS-RPT
+        result["transport"] = check_transport(resolver, domain)
+
+        # BIMI
+        result["bimi"] = check_bimi(resolver, domain)
+
         # DKIM selectors
         dkim_records: List[str] = []
         for sel in dkim_selectors:
@@ -808,6 +911,7 @@ def main() -> int:
         # NS, SOA
         ns_records, _, _ = query_records(resolver, domain, "NS")
         soa_records, _, _ = query_records(resolver, domain, "SOA")
+        result["ns_consistency"] = check_ns_sync(resolver, domain, check_ipv6, dns_timeout)
         soa_serial = ""
         if soa_records:
             try:

@@ -16,6 +16,33 @@ All notable changes to this project will be documented in this file.
 - Новый dependent items: mail.ptr.missing.count, mail.ptr.nofcrdns.count, mail.ptr.generic.count; триггеры на отсутствие PTR (HIGH), FCrDNS fail (WARNING), generic PTR (INFO).
 - Версия скрипта и шаблона повышена до 0.1.19.
 
+## [0.1.20] - 2025-12-26
+- Добавлены проверки MTA-STS и TLS-RPT, BIMI presence.
+- Добавлен контроль консистентности авторитативных NS (SOA serial mismatch).
+- Улучшены триггеры DMARC (p=none, pct<100) и SPF (+all HIGH, ?all INFO).
+- Добавлен триггер на медленный DNS (mail.dns.query_time_ms > {$DNS_SLOW_MS}).
+- Версии скрипта и шаблона повышены до 0.1.20.
+
+## [0.1.21] - 2025-12-26
+- Исправлено отсутствие полей plus_all/neutral_all в JSON при пустом SPF (исключает ошибки preprocessing JSONPath).
+- Версии скрипта и шаблона повышены до 0.1.21.
+
+## [0.1.22] - 2025-12-26
+- Добавлены error_handler CUSTOM_VALUE в JSONPath для MTA-STS, TLS-RPT, BIMI presence, чтобы предотвращать ошибки preprocessing при отсутствии секции в старых данных master item.
+- Версия шаблона повышена до 0.1.22 (скрипт остаётся 0.1.21).
+
+## [0.1.23] - 2025-12-26
+- Добавлены error_handler CUSTOM_VALUE для ns_consistency (consistent, mismatch) чтобы исключить ошибки preprocessing на старых данных master item.
+- Версия шаблона повышена до 0.1.23 (скрипт остаётся 0.1.21).
+
+## [0.1.24] - 2025-12-26
+- Добавлены error_handler CUSTOM_VALUE для mail.spf.plus_all и mail.spf.neutral_all, чтобы исключить ошибки preprocessing при старых данных master item.
+- Версия шаблона повышена до 0.1.24 (скрипт остаётся 0.1.21).
+
+## [0.1.25] - 2025-12-26
+- Уточнено описание макроса {$DKIM_SELECTORS}: селекторы без ._domainkey, через запятую без пробелов, с примерами.
+- Версия шаблона повышена до 0.1.25 (скрипт остаётся 0.1.21).
+
 ## [0.1.16] - 2025-12-24
 - Исправлена проблема импорта шаблона ("Template group already exists") путем сопоставления UUID группы `Templates/Applications`.
 - Версии скрипта и шаблона повышены до 0.1.16.

@@ -26,6 +26,11 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 - ✅ DNSBL checking (statuses: LISTED, NOT LISTED, POLICY/ERROR, CHECK FAILED)
 - ✅ DNSSEC validation (DS records, AD flags)
 - ✅ PTR/FCrDNS checks for MX (missing PTR, FCrDNS mismatch, generic PTR)
+- ✅ Transport security: MTA-STS and TLS-RPT
+- ✅ BIMI (presence of TXT default._bimi)
+- ✅ Authoritative NS consistency (SOA serial)
+- ✅ Extended DMARC triggers (p=none, pct<100) and SPF (+all, ?all)
+- ✅ DNS performance monitoring (threshold {$DNS_SLOW_MS})
 - ✅ IPv6 support (optional)
 - ✅ Multiple DNS resolvers with shuffling
 - ✅ Local result caching
@@ -191,7 +196,7 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.18` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.25` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage

@@ -1,1 +1,1389 @@
-{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params.","data":"Invalid parameter \"/options/templates/1\": a number is expected."},"id":1}
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+      name: Templates/Applications
+  templates:
+    - uuid: 5f2a484eee7342a7bf440c60fcebca00
+      template: 'Template Mail DNS Audit Zabbix'
+      name: 'Template Mail DNS Audit Zabbix'
+      description: |
+        Comprehensive Mail DNS Posture Audit.
+        Version: 0.1.25
+        Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
+        itforprof.com by Konstantin Tyutyunnik
+        
+        Monitors:
+        - MX records (presence, changes, TTL)
+        - SPF (RFC compliance, lookup count, ptr usage, CIDR allowlist)
+        - DMARC (presence, policy details: p, rua, sp)
+        - DKIM (public key presence and changes)
+        - DNSBL (IP listing with normalized statuses: LISTED, POLICY/ERROR, CHECK FAILED)
+        - DNSSEC (DS records)
+        - NS and SOA records
+        - Duplicate DNS records: MX, DMARC, DKIM selectors, NS, SOA
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: 449e765e33884e0ea1dd5ff3a0a6d1cc
+          name: 'DKIM hash'
+          type: DEPENDENT
+          key: mail.dkim.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of all monitored DKIM selector records.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.dkim_hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 5c65f9a9451a499b974c2303ecc84a76
+          name: 'DKIM present'
+          type: DEPENDENT
+          key: mail.dkim.present
+          delay: '0'
+          description: '1 = DKIM TXT найден для селекторов в {$DKIM_SELECTORS}, 0 = нет. Пишите селекторы без ._domainkey, через запятую без пробелов (например: default,mail).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.dkim_hash
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value && value.length > 0) ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: f7ab9358db2b48008a3f2ca96064d55a
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.present)=0'
+              name: 'DKIM record missing'
+              priority: HIGH
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: d4f97081d844407aac38dafaf393432a
+          name: 'DMARC hash'
+          type: DEPENDENT
+          key: mail.dmarc.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of the domain DMARC record.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.dmarc_hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 4c96f1fb7bf14eeeb5b614bd010856d2
+          name: 'DMARC pct'
+          type: DEPENDENT
+          key: mail.dmarc.pct
+          delay: '0'
+          description: 'Percentage of messages to which the DMARC policy is applied (pct=). Defaults to 100.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.pct
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '100'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var v = parseInt(value);
+                  return isNaN(v) ? 100 : v;
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 2f7642a96a2541d5a4a45808e5555555
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.pct)<100'
+              name: 'DMARC pct below 100'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: e79cdc39f6494441a2126cfe324e7346
+          name: 'DMARC policy'
+          type: DEPENDENT
+          key: mail.dmarc.policy
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'The effective DMARC policy (p=) which can be "none", "quarantine", or "reject".'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.p
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (["none", "quarantine", "reject"].indexOf(value) !== -1) ? value : "none";'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: f6e7af347b614fdd8c919123d4444444
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none"'
+              name: 'DMARC policy is none'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 5fd95e5b13494827ba65a565950203e7
+          name: 'DMARC present'
+          type: DEPENDENT
+          key: mail.dmarc.present
+          delay: '0'
+          description: 'Flag indicating if a DMARC record is present (1 = Yes, 0 = No).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.present
+            - type: BOOL_TO_DECIMAL
+              parameters:
+                - ''
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 5fb694a5d78e4e1880b4c2c2f7c7903d
+          name: 'DMARC rua'
+          type: DEPENDENT
+          key: mail.dmarc.rua
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'The aggregate reporting URI (rua=) specified in the DMARC record.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.rua
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 9e3b1c2a5d4f4e7a8b9c1d2e3f4a5b6c
+          name: 'DMARC Security Score'
+          type: DEPENDENT
+          key: mail.dmarc.score
+          delay: '0'
+          description: 'Numeric security score for DMARC policy: 2 (Reject), 1 (Quarantine), 0 (None/Missing).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.p
+              error_handler: CUSTOM_VALUE
+              error_handler_params: none
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var p = value.toLowerCase();
+                  if (p === "reject") return 2;
+                  if (p === "quarantine") return 1;
+                  return 0;
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: e98f3e8a63af4f90a89af1eef230e3f2
+          name: 'DMARC subdomain policy'
+          type: DEPENDENT
+          key: mail.dmarc.sp
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'The DMARC policy for subdomains (sp=). If missing, it usually defaults to the main policy (p=).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.sp
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (["none", "quarantine", "reject"].indexOf(value) !== -1) ? value : "";'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 1f5c1c691fbe4f6a9d2f5d7a14b1a111
+          name: 'MTA-STS present'
+          type: DEPENDENT
+          key: mail.mta_sts.present
+          delay: '0'
+          description: '1 = TXT _mta-sts.{DOMAIN} найден, 0 = нет.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.transport.mta_sts.present
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: c3e3db501d7b4e289a3b5bd2a3f44444
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mta_sts.present)=0'
+              name: 'MTA-STS record missing'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 6c6d3c9164d44f9d90d62e9a5f840222
+          name: 'TLS-RPT present'
+          type: DEPENDENT
+          key: mail.tls_rpt.present
+          delay: '0'
+          description: '1 = TXT _smtp._tls.{DOMAIN} найден, 0 = нет.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.transport.tls_rpt.present
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 7f2c3b550d2c4b529f476c37b5e55555
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.tls_rpt.present)=0'
+              name: 'TLS-RPT record missing'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: c9b8a58e7cbe4a1695bd3a5e2d0c3333
+          name: 'BIMI present'
+          type: DEPENDENT
+          key: mail.bimi.present
+          delay: '0'
+          description: '1 = TXT default._bimi.{DOMAIN} найден, 0 = нет.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.bimi.present
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: b6a9e6d06c7d4c2b8b2f7a99a6666666
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.bimi.present)=0'
+              name: 'BIMI record missing'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 1e473855a1ed43c587679ee100a197c8
+          name: 'Mail DNS audit raw'
+          type: EXTERNAL
+          key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          delay: 1h
+          history: 1d
+          value_type: TEXT
+          trends: '0'
+          description: 'Master item that executes the external Python script. It returns a comprehensive JSON object containing all DNS posture data.'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+            - tag: component
+              value: mail-dns
+        - uuid: 66aa16a12d554117bab4b4befaf14334
+          name: 'DNS error text'
+          type: DEPENDENT
+          key: mail.dns.error
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Technical error message from the script, if any.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.meta.error
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value === "null" || value === null) ? "" : value;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 1af104976a02494da0fdc8758fccb868
+          name: 'DNS query time ms'
+          type: DEPENDENT
+          key: mail.dns.query_time_ms
+          delay: '0'
+          units: ms
+          description: 'Total execution time of the audit script in milliseconds.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.meta.query_time_ms
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 6dce0af48c254b3f84a95e15f6666666
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dns.query_time_ms)>{$DNS_SLOW_MS}'
+              name: 'DNS query slow (> {$DNS_SLOW_MS} ms)'
+              priority: WARNING
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 5f2c0b91a7d74a4c8c9e6cbdfe88b605
+          name: 'DNSBL check failed count'
+          type: DEPENDENT
+          key: mail.dnsbl.check_failed.count
+          delay: '0'
+          description: 'Count of DNSBL checks that failed technically (timeouts, SERVFAIL, empty responses).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var obj = JSON.parse(value);
+                    var entries = (obj && obj.dnsbl && Array.isArray(obj.dnsbl.entries)) ? obj.dnsbl.entries : [];
+                    var c = 0;
+                    for (var i=0;i<entries.length;i++) {
+                      if (entries[i].status === "CHECK FAILED") { c++; }
+                    }
+                    return c;
+                  } catch (e) { return 0; }
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 7f6e5d4c3b2a4f1e8d0c9b8a7b6c5d4e
+          name: 'DNSBL Health Status'
+          type: DEPENDENT
+          key: mail.dnsbl.health
+          delay: '0'
+          description: 'Overall DNSBL status: 1 (all checks NOT LISTED), 0 (listed, policy/error, or check failures present).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var obj = JSON.parse(value);
+                    var entries = (obj && obj.dnsbl && Array.isArray(obj.dnsbl.entries)) ? obj.dnsbl.entries : [];
+                    if (!entries.length) return 1;
+                    for (var i=0;i<entries.length;i++) {
+                      var st = entries[i].status;
+                      if (st && st !== "NOT LISTED") {
+                        return 0;
+                      }
+                    }
+                    return 1;
+                  } catch (e) { return 0; }
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 7c2e3f6d0e3f4f5f8e7c9d9a7f1b2c3d
+          name: 'DNSBL listed details'
+          type: DEPENDENT
+          key: mail.dnsbl.listed.details
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Human-readable summary of DNSBL findings, including IP, zone, and reason if listed.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dnsbl.summary
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 2575338306274cd68d126633514f72c0
+          name: 'DNSBL listed count'
+          type: DEPENDENT
+          key: mail.dnsbl.listed_count
+          delay: '0'
+          description: 'Total number of MX IP addresses found in the monitored DNSBL zones.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dnsbl.listed_count
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 8c3d439a77d046779b2f7c8b9b153e29
+          name: 'DNSBL policy/error count'
+          type: DEPENDENT
+          key: mail.dnsbl.policy_error.count
+          delay: '0'
+          description: 'Count of DNSBL policy/error responses (e.g., open resolver, rate limit).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var obj = JSON.parse(value);
+                    var entries = (obj && obj.dnsbl && Array.isArray(obj.dnsbl.entries)) ? obj.dnsbl.entries : [];
+                    var c = 0;
+                    for (var i=0;i<entries.length;i++) {
+                      if (entries[i].status === "POLICY/ERROR") { c++; }
+                    }
+                    return c;
+                  } catch (e) { return 0; }
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: be6d8192f92f41c3bc69672d3f41bb01
+          name: 'DNSSEC AD flag'
+          type: DEPENDENT
+          key: mail.dnssec.ad_flag
+          delay: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dnssec.ad_flag
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value===''true'' || value===''1'') ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: f8bb157233044061b4f922cb7475829c
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnssec.ad_flag)=0'
+              name: 'DNSSEC AD flag missing'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 6615bd80a45642758e80e2dbc941afb3
+          name: 'DNSSEC DS present'
+          type: DEPENDENT
+          key: mail.dnssec.ds_present
+          delay: '0'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dnssec.ds_present
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value===''true'' || value===''1'') ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: de0696ceb51240ac85b06d8098e29059
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnssec.ds_present)=0'
+              name: 'DNSSEC DS missing'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: da1dc05462404de5a9826aea2d6a8ab9
+          name: 'DS hash'
+          type: DEPENDENT
+          key: mail.ds.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of DNSSEC Delegation Signer (DS) records.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.ds_hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 194568ad5974479dadcbeb72479625e7
+          name: 'MX count'
+          type: DEPENDENT
+          key: mail.mx.count
+          delay: '0'
+          description: 'Total number of MX records found for the domain.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mx.length()
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 2a4c7ff309b542ec9be3da4dc60d908d
+          name: 'MX hash'
+          type: DEPENDENT
+          key: mail.mx.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of the domain MX records. Used to detect changes in MX configuration.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.mx_hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 5f2a484eee7342a7bf440c60fcebca01
+          name: 'Unresolved MX targets'
+          type: DEPENDENT
+          key: mail.mx.unresolved.count
+          delay: '0'
+          description: 'Number of hostnames in SPF mx mechanism that could not be resolved to IP addresses.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.unresolved_mx_mechanisms.length()
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 92469d2f6bfd48328bd9882960faab0d
+          name: 'NS hash'
+          type: DEPENDENT
+          key: mail.ns.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of the domain name server (NS) records.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.ns_hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 0a2c9f928b7f4fbf87131f8d9d777777
+          name: 'NS consistent'
+          type: DEPENDENT
+          key: mail.ns.consistent
+          delay: '0'
+          description: '1 = все NS отдают одинаковый SOA serial, 0 = рассинхрон или ошибка.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ns_consistency.consistent
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 1c924f590c7d4f8388725fc7b9999999
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ns.consistent)=0'
+              name: 'DNS authoritative NS out of sync'
+              priority: WARNING
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 9be53db87a2e40b381d50d3de8888888
+          name: 'NS serial mismatch count'
+          type: DEPENDENT
+          key: mail.ns.serial_mismatch.count
+          delay: '0'
+          description: 'Количество NS с отличающимся SOA serial.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ns_consistency.mismatch
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var v = Number(value);
+                  if (isNaN(v)) { return 0; }
+                  return v;
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 86f917b1ebea4a278373e0d96e6e0579
+          name: 'PTR generic count'
+          type: DEPENDENT
+          key: mail.ptr.generic.count
+          delay: '0'
+          description: 'Number of MX IPs with generic/dynamic PTR hostnames.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ptr.generic
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 03e675490bd34169a6f2402b2110da52
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ptr.generic.count)>0'
+              name: 'MX PTR generic/dynamic (count={ITEM.LASTVALUE1})'
+              priority: INFO
+              description: 'PTR looks generic/dynamic.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 59dd68518a2d47a29c427ad94bc9653b
+          name: 'PTR missing count'
+          type: DEPENDENT
+          key: mail.ptr.missing.count
+          delay: '0'
+          description: 'Number of MX IPs without PTR record.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ptr.missing
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 7ace38110c3a4287b48dddf59e3cc996
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ptr.missing.count)>0'
+              name: 'MX PTR missing (count={ITEM.LASTVALUE1})'
+              priority: HIGH
+              description: 'One or more MX IPs have no PTR record.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 8df6cfa78cee44688863a5c1a74240f5
+          name: 'PTR no FCrDNS count'
+          type: DEPENDENT
+          key: mail.ptr.nofcrdns.count
+          delay: '0'
+          description: 'Number of MX IPs where PTR does not resolve back to the same IP.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ptr.no_fcrdns
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 805194d959e4420587a5e14514bec6b6
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ptr.nofcrdns.count)>0'
+              name: 'MX PTR FCrDNS failed (count={ITEM.LASTVALUE1})'
+              priority: AVERAGE
+              description: 'PTR exists but does not resolve back to same IP.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: bcc50714262c4eba8bb46eda5b176bbf
+          name: 'SOA hash'
+          type: DEPENDENT
+          key: mail.soa.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of the SOA record serial number.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.soa.hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 5535f340984c4a4d90826188f93ac4d6
+          name: 'SOA serial'
+          type: DEPENDENT
+          key: mail.soa.serial
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'The serial number from the SOA record.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.soa.serial
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: f3db3881bb7947248da328ac6233f21a
+          name: 'SPF all mechanism'
+          type: DEPENDENT
+          key: mail.spf.all_mechanism
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'The specific "all" mechanism token found in the SPF record (e.g., -all, ~all, ?all).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.all_mechanism
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 7f18bc1619694c2795f11ea37edfc093
+          name: 'SPF all policy OK'
+          type: DEPENDENT
+          key: mail.spf.all_policy_ok
+          delay: '0'
+          description: 'Flag indicating if the "all" mechanism matches the recommended policy defined in {$SPF_EXPECT_ALL}.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.all_policy_ok
+            - type: BOOL_TO_DECIMAL
+              parameters:
+                - ''
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 43e2ad240ad443849f7217a2e0000000
+          name: 'SPF has +all'
+          type: DEPENDENT
+          key: mail.spf.plus_all
+          delay: '0'
+          description: '1 = SPF содержит +all/ALL, 0 = нет.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.plus_all
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 8c01b7d631df4a4db632c8d5c2222222
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.plus_all)=1'
+              name: 'SPF contains +all (allow all)'
+              priority: HIGH
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 7fd996e3135145c4bb607ae0f1111111
+          name: 'SPF has ?all'
+          type: DEPENDENT
+          key: mail.spf.neutral_all
+          delay: '0'
+          description: '1 = SPF содержит ?all (neutral), 0 = нет.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.neutral_all
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 1f64de7f5d934f0d8d7bd7e0c3333333
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.neutral_all)=1'
+              name: 'SPF contains ?all (neutral)'
+              priority: INFO
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: f399012b266d42b69b4376fed20c2d6d
+          name: 'SPF CIDR out of allowlist count'
+          type: DEPENDENT
+          key: mail.spf.cidr_out_of_allowlist.count
+          delay: '0'
+          description: 'Number of IP networks in SPF record that are not listed in the {$CIDR_ALLOWLIST} macro.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.cidr_out_of_allowlist.length()
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: a16a49394b934c85a14749f2d87973b4
+          name: 'SPF hash'
+          type: DEPENDENT
+          key: mail.spf.hash
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Stable hash of the domain SPF record. Used to detect changes in SPF configuration.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.snapshots.spf_hash
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 1617b13c04fe466ea123ed46b886d0c8
+          name: 'SPF has ptr'
+          type: DEPENDENT
+          key: mail.spf.has_ptr
+          delay: '0'
+          description: 'Flag indicating if the deprecated "ptr" mechanism is used in the SPF record.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.has_ptr
+            - type: BOOL_TO_DECIMAL
+              parameters:
+                - ''
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 8a7b6c5d4e3f4a2b8c1d0e9f8a7b6c5d
+          name: 'SPF Health Status'
+          type: DEPENDENT
+          key: mail.spf.health
+          delay: '0'
+          description: 'Overall SPF health status: 1 (OK), 0 (Issues detected).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var obj = JSON.parse(value);
+                    var sa = obj.spf_analysis;
+                    if (sa.all_policy_ok && 
+                        sa.lookup_estimate <= 10 && 
+                        !sa.has_multiple_spf && 
+                        !sa.has_ptr) {
+                      return 1;
+                    }
+                    return 0;
+                  } catch (e) { return 0; }
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 5b0447300c5940f2a3b1d4e1bbd3a27c
+          name: 'SPF lookup estimate'
+          type: DEPENDENT
+          key: mail.spf.lookup_estimate
+          delay: '0'
+          description: 'Estimated number of DNS lookups required to evaluate the SPF record.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.lookup_estimate
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 0fd793c022a041f49b6a4c7f4a2dad6f
+          name: 'SPF multiple records'
+          type: DEPENDENT
+          key: mail.spf.multiple
+          delay: '0'
+          description: 'Flag indicating if multiple SPF records were detected (1 = Yes, 0 = No).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.has_multiple_spf
+            - type: BOOL_TO_DECIMAL
+              parameters:
+                - ''
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+      discovery_rules:
+        - uuid: addc1d564a334496bd00547f47b06549
+          name: 'DNSBL zone discovery'
+          type: DEPENDENT
+          key: mail.dnsbl.zone.discovery
+          delay: '0'
+          description: 'Discovers the list of DNSBL zones being monitored.'
+          item_prototypes:
+            - uuid: b1285187ef0940e1a4fcd9526a97c0c3
+              name: 'DNSBL zone listed count [{#DNSBL_ZONE}]'
+              type: DEPENDENT
+              key: 'mail.dnsbl.zone.listed[{#DNSBL_ZONE}]'
+              delay: '0'
+              description: 'Total number of listed IPs in the specific DNSBL zone {#DNSBL_ZONE}.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.dnsbl.listed[?(@.zone=="{#DNSBL_ZONE}")].length()'
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lld_dnsbl_zones.data
+        - uuid: 3d5b1dc63d8a407a895e3d5844a94146
+          name: 'MX discovery'
+          type: DEPENDENT
+          key: mail.mx.discovery
+          delay: '0'
+          description: 'Discovers hostnames and priorities from domain MX records.'
+          item_prototypes:
+            - uuid: c63fc9faa5d447efb6d82ff8d4f0198b
+              name: 'MX host IPv6 list [{#MXHOST}]'
+              type: DEPENDENT
+              key: 'mail.mx.host.aaaa[{#MXHOST}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'List of IPv6 addresses (AAAA records) for the MX host {#MXHOST}.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.mx[?(@.host=="{#MXHOST}")].aaaa'
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+            - uuid: a9b436b9dfc749beb6c9e137cb64e614
+              name: 'MX host IPv4 list [{#MXHOST}]'
+              type: DEPENDENT
+              key: 'mail.mx.host.a[{#MXHOST}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'List of IPv4 addresses (A records) for the MX host {#MXHOST}.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.mx[?(@.host=="{#MXHOST}")].a'
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+            - uuid: c79957e5ec6849b79f9e2c7831a977e8
+              name: 'MX host TTL [{#MXHOST}]'
+              type: DEPENDENT
+              key: 'mail.mx.host.ttl[{#MXHOST}]'
+              delay: '0'
+              units: s
+              description: 'Time-to-Live (TTL) value for the MX host {#MXHOST}.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.mx[?(@.host=="{#MXHOST}")].ttl'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                        var v = JSON.parse(value);
+                        if (Array.isArray(v) && v.length > 0) return v[0];
+                        return v;
+                      } catch (e) { return 0; }
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lld_mx.data
+        - uuid: 47003523826443cd8fad42efbda55c6e
+          name: 'MX IP discovery'
+          type: DEPENDENT
+          key: mail.mx.ip.discovery
+          delay: '0'
+          description: 'Discovers individual IP addresses associated with MX hosts for DNSBL checking.'
+          item_prototypes:
+            - uuid: 5c0e0a544e6b4c74954b0f12abf7e5d4
+              name: 'MX IP listed status [{#MXIP}]'
+              type: DEPENDENT
+              key: 'mail.mx.ip.listed.status[{#MXIP}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'Normalized DNSBL check status for IP {#MXIP}: LISTED, NOT LISTED, POLICY/ERROR, or CHECK FAILED.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                        var obj = typeof value === 'string' ? JSON.parse(value) : value;
+                        var entries = (obj && obj.dnsbl && Array.isArray(obj.dnsbl.entries)) ? obj.dnsbl.entries : [];
+                        var statuses = [];
+                        for (var i=0;i<entries.length;i++) {
+                          var e = entries[i];
+                          if (e && e.ip === "{#MXIP}") {
+                            if (e.status) { statuses.push(e.status); }
+                          }
+                        }
+                        if (statuses.indexOf("LISTED") !== -1) return "LISTED";
+                        if (statuses.indexOf("POLICY/ERROR") !== -1) return "POLICY/ERROR";
+                        if (statuses.indexOf("CHECK FAILED") !== -1) return "CHECK FAILED";
+                        if (statuses.length === 0) return "NOT LISTED";
+                        return statuses[0];
+                      } catch (e) {
+                        return "UNKNOWN";
+                      }
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+            - uuid: 7f7ff6283d184a699b604e6a46c5a1cb
+              name: 'MX IP listed TXT [{#MXIP}]'
+              type: DEPENDENT
+              key: 'mail.mx.ip.listed.txt[{#MXIP}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'Detailed TXT explanation from the DNSBL provider for IP {#MXIP}.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                        var obj = typeof value === 'string' ? JSON.parse(value) : value;
+                        var entries = (obj && obj.dnsbl && Array.isArray(obj.dnsbl.entries)) ? obj.dnsbl.entries : [];
+                        var txts = [];
+                        for (var i=0;i<entries.length;i++) {
+                          var e = entries[i];
+                          if (e && e.ip === "{#MXIP}" && Array.isArray(e.txt)) {
+                            txts = txts.concat(e.txt);
+                          }
+                        }
+                        return txts.length ? txts.join("; ") : "*NONE*";
+                      } catch (e) {
+                        return "*NONE*";
+                      }
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+            - uuid: 4f7bb0d6b7d048d6a3a4c7b09239a322
+              name: 'MX IP listed zone [{#MXIP}]'
+              type: DEPENDENT
+              key: 'mail.mx.ip.listed.zone[{#MXIP}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              description: 'The name of the DNSBL zone where the IP {#MXIP} was found.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                        var obj = typeof value === 'string' ? JSON.parse(value) : value;
+                        if (obj && obj.dnsbl && Array.isArray(obj.dnsbl.listed)) {
+                          for (var i=0;i<obj.dnsbl.listed.length;i++) {
+                            if (obj.dnsbl.listed[i].ip === "{#MXIP}") {
+                              var z = obj.dnsbl.listed[i].zone;
+                              if (z && z !== '') { return z; }
+                            }
+                          }
+                        }
+                      } catch(e) {}
+                      return '*UNKNOWN*';
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+            - uuid: 17cdad41489b47c2b649b79a1478d79b
+              name: 'MX IP listed flag [{#MXIP}]'
+              type: DEPENDENT
+              key: 'mail.mx.ip.listed[{#MXIP}]'
+              delay: '0'
+              description: 'Flag indicating if the IP {#MXIP} is listed in any monitored DNSBL (1 = Yes, 0 = No).'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.dnsbl.listed[?(@.ip=="{#MXIP}")].zone'
+                  error_handler: DISCARD_VALUE
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = value;
+                      try { v = JSON.parse(value); } catch (e) {}
+                      if (Array.isArray(v)) { return v.length > 0 ? 1 : 0; }
+                      return v ? 1 : 0;
+              master_item:
+                key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+          trigger_prototypes:
+            - uuid: 9f3fd9925f1e4b4f81ce3f3c8cfa9a90
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.status[{#MXIP}])="CHECK FAILED" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
+              name: 'MX {#MXHOST} IP {#MXIP} DNSBL check failed: {ITEM.LASTVALUE2}'
+              priority: WARNING
+              description: 'Alert when a technical failure (e.g., timeout) occurs during a DNSBL check.'
+              manual_close: 'YES'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+            - uuid: 0a2c5e1a0a434f7e9f6a55bfe0ec74d1
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.status[{#MXIP}])="POLICY/ERROR" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
+              name: 'MX {#MXHOST} IP {#MXIP} DNSBL policy/error: {ITEM.LASTVALUE2}'
+              priority: WARNING
+              description: 'Alert when a DNSBL provider blocks your query due to policy (e.g., open resolver, rate limits).'
+              manual_close: 'YES'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+            - uuid: 6e43d4d3f8f44f1ea4e7fd5fce6cb9e4
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed[{#MXIP}])=1 and last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.zone[{#MXIP}])<>"*UNKNOWN*"'
+              name: 'MX {#MXHOST} IP {#MXIP} listed in DNSBL {ITEM.LASTVALUE2}'
+              priority: HIGH
+              description: 'Alert when an MX IP address is found in a blackhole list.'
+              manual_close: 'YES'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+          master_item:
+            key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lld_mx_ip.data
+      macros:
+        - macro: '{$CHECK_IPV6}'
+          value: '0'
+          description: 'Set to 1 to enable IPv6 (AAAA) record checks.'
+        - macro: '{$CIDR_ALLOWLIST}'
+          description: 'Comma-separated list of CIDR networks allowed in SPF records.'
+        - macro: '{$DKIM_SELECTORS}'
+          value: default
+          description: 'DKIM селекторы без ._domainkey, через запятую без пробелов. Примеры: default | default,mail | dkim1,mx'
+        - macro: '{$DNSBL_CACHE_TTL_SEC}'
+          value: '1200'
+          description: 'Time in seconds to cache DNSBL check results locally to respect provider limits.'
+        - macro: '{$DNSBL_MAX_IP}'
+          value: '1'
+          description: 'Maximum number of unique IPs to check against DNSBL zones to avoid rate limiting.'
+        - macro: '{$DNSBL_ZONES}'
+          value: 'zen.spamhaus.org,bl.spamcop.net'
+          description: 'Comma-separated list of DNSBL zones to check against.'
+        - macro: '{$DNS_RESOLVER}'
+          value: '127.0.0.1,9.9.9.10,149.112.112.10,208.67.222.222,208.67.220.220,8.26.56.26,8.20.247.20,95.85.95.85,2.56.220.2,62.76.76.62,62.76.62.76,195.208.4.1,195.208.5.1'
+          description: 'IP addresses of DNS resolvers, comma-separated. If empty, system resolvers from resolv.conf will be used. For DNSBL, prefer a local recursive resolver (Unbound/Bind) trusted in your network; public resolvers are often policy-blocked. With multiple resolvers, load is distributed (see {$DNS_SHUFFLE}=1 by default); set {$DNS_SHUFFLE}=0 to keep order.'
+        - macro: '{$DNS_SHUFFLE}'
+          value: '1'
+          description: 'Shuffle resolver list each run to distribute load across resolvers (1=shuffle, 0=keep order from {$DNS_RESOLVER}).'
+        - macro: '{$DNS_SLOW_MS}'
+          value: '3000'
+          description: 'Threshold in milliseconds for triggering slow DNS response alert.'
+        - macro: '{$DNS_TIMEOUT_SEC}'
+          value: '3'
+          description: 'Timeout in seconds for a single DNS query.'
+        - macro: '{$MAX_MX_CHECK}'
+          value: '5'
+          description: 'Maximum number of MX records to process for discovery and detailed checks.'
+        - macro: '{$SPF_EXPECT_ALL}'
+          value: '-all|~all'
+          description: 'Regex for expected "all" mechanism in SPF. Usually "-all" (Fail) or "~all" (SoftFail) is recommended.'
+        - macro: '{$SPF_MAX_LOOKUPS}'
+          value: '10'
+          description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
+        - macro: '{$TEMPLATE_VERSION}'
+          value: 0.1.25
+          description: 'Template version identifier for Mail DNS Audit.'
+      dashboards:
+        - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
+          name: 'Mail DNS Audit Overview'
+          pages:
+            - widgets:
+                - type: gauge
+                  name: 'DNSBL Health'
+                  width: '6'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: itemid
+                      value: mail.dnsbl.health
+                    - type: INTEGER
+                      name: max
+                      value: '1'
+                    - type: INTEGER
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: value_arc_color
+                      value: 00FF00
+                - type: graph
+                  name: 'DNS Audit Performance'
+                  'y': '4'
+                  width: '12'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: itemid
+                      value: mail.dns.query_time_ms
+                - type: plaintext
+                  name: 'Last Script Error'
+                  'y': '9'
+                  width: '24'
+                  fields:
+                    - type: STRING
+                      name: itemid
+                      value: mail.dns.error
+                - type: gauge
+                  name: 'SPF Health'
+                  x: '6'
+                  width: '6'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: itemid
+                      value: mail.spf.health
+                    - type: INTEGER
+                      name: max
+                      value: '1'
+                    - type: INTEGER
+                      name: min
+                      value: '0'
+                - type: gauge
+                  name: 'DMARC Security'
+                  x: '12'
+                  width: '6'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: itemid
+                      value: mail.dmarc.score
+                    - type: INTEGER
+                      name: max
+                      value: '2'
+                    - type: INTEGER
+                      name: min
+                      value: '0'
+                - type: problems
+                  name: 'Mail DNS Problems'
+                  x: '12'
+                  'y': '4'
+                  width: '12'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: tags.0.tag
+                      value: component
+                    - type: STRING
+                      name: tags.0.value
+                      value: mail-dns
+                - type: item
+                  name: 'DMARC Policy'
+                  x: '18'
+                  width: '6'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: itemid
+                      value: mail.dmarc.policy

@@ -26,6 +26,11 @@ Zabbix Mail DNS Audit — интегрированное решение для �
 - ✅ Проверка DNSBL (со статусами: LISTED, NOT LISTED, POLICY/ERROR, CHECK FAILED)
 - ✅ Валидация DNSSEC (DS записи, AD флаги)
 - ✅ Проверка PTR/FCrDNS для MX (отсутствие PTR, несходимость, generic PTR)
+- ✅ Транспортная безопасность: MTA-STS и TLS-RPT
+- ✅ BIMI (наличие TXT default._bimi)
+- ✅ Консистентность авторитативных NS (SOA serial)
+- ✅ Расширенные триггеры DMARC (p=none, pct<100) и SPF (+all, ?all)
+- ✅ Мониторинг скорости DNS (порог {$DNS_SLOW_MS})
 - ✅ Поддержка IPv6 (опционально)
 - ✅ Несколько DNS резолверов с перемешиванием
 - ✅ Локальное кэширование результатов
@@ -191,7 +196,7 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM |
-| `{$TEMPLATE_VERSION}` | `0.1.18` | Версия шаблона |
+| `{$TEMPLATE_VERSION}` | `0.1.25` | Версия шаблона |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
 ## Использование
