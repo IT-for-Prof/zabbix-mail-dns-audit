@@ -9,7 +9,7 @@ zabbix_export:
     name: 'Template Mail DNS Audit Zabbix'
     description: |
       Comprehensive Mail DNS Posture Audit.
-      Version: 0.1.16
+      Version: 0.1.18
       Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
       itforprof.com by Konstantin Tyutyunnik
 
@@ -21,6 +21,7 @@ zabbix_export:
       - DNSBL (IP listing with normalized statuses: LISTED, POLICY/ERROR, CHECK FAILED)
       - DNSSEC (DS records)
       - NS and SOA records
+      - Duplicate DNS records: MX, DMARC, DKIM selectors, NS, SOA
     groups:
     - name: Templates/Applications
     macros:
@@ -63,8 +64,11 @@ zabbix_export:
     - macro: '{$DKIM_SELECTORS}'
       value: 'default'
       description: 'Comma-separated list of DKIM selectors to monitor for changes.'
+    - macro: '{$MAIL_DNS_NODATA_SEC}'
+      value: '1800'
+      description: 'nodata threshold (seconds) for mail.dns.audit master item.'
     - macro: '{$TEMPLATE_VERSION}'
-      value: '0.1.16'
+      value: '0.1.18'
       description: 'Template version identifier for Mail DNS Audit.'
     - macro: '{$DNS_SHUFFLE}'
       value: '1'
@@ -122,6 +126,81 @@ zabbix_export:
         dependencies:
         - name: 'External script error: {ITEM.LASTVALUE}'
           expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: 9c1ef7e4c8d04f4b96f8f1a2b7c6d5e4
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dup.mx)=1'
+        name: 'Duplicate MX records detected'
+        priority: WARNING
+        description: 'Multiple identical MX entries (same priority/host) detected. Clean up duplicates to avoid resolver inconsistencies.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: 8b7a6c5d4e3f4a2b1c0d9e8f7a6b5c4d
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dup.dmarc)=1'
+        name: 'Multiple DMARC TXT records detected'
+        priority: WARNING
+        description: 'More than one DMARC record (_dmarc.<domain>) found. Receivers may ignore the policy; leave only one v=DMARC1 TXT.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: 7c6b5a4d3e2f4a1b0c9d8e7f6a5b4c3d
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dup.dkim)=1'
+        name: 'Duplicate DKIM TXT per selector detected'
+        priority: WARNING
+        description: 'Selectors with more than one DKIM TXT found. Clean up duplicates to prevent verification ambiguity.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: 6b5a4c3d2e1f4a5b6c7d8e9f0a1b2c3d
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dup.ns)=1'
+        name: 'Duplicate NS records detected'
+        priority: WARNING
+        description: 'Identical NS names repeated in the zone. Clean up duplicates to keep delegation tidy.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: 5a4b3c2d1e0f4a5b6c7d8e9f0a1b2c3d
+        expression: 'last(/Template Mail DNS Audit Zabbix/mail.dup.soa)=1'
+        name: 'Multiple SOA records detected'
+        priority: WARNING
+        description: 'More than one SOA record returned. This is non-standard and should be corrected.'
+        dependencies:
+        - name: 'External script error: {ITEM.LASTVALUE}'
+          expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+        tags:
+        - tag: component
+          value: mail-dns
+        - tag: Application
+          value: Mail DNS
+      - uuid: 4f3e2d1c0b9a8f7e6d5c4b3a29180706
+        expression: 'nodata(/Template Mail DNS Audit Zabbix/mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}],{$MAIL_DNS_NODATA_SEC})=1'
+        name: 'No data from mail.dns.audit (>{$MAIL_DNS_NODATA_SEC}s)'
+        priority: WARNING
+        description: 'Master item returned no data within the configured nodata window. Possible causes: script timeout, resolver issues, or host unreachable.'
         tags:
         - tag: component
           value: mail-dns
@@ -400,6 +479,126 @@ zabbix_export:
         - $.spf_analysis.has_multiple_spf
       - type: BOOL_TO_DECIMAL
       description: 'Flag indicating if multiple SPF records were detected (1 = Yes, 0 = No).'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: d4e3f2c1b0a9988776655443322110ff
+      name: 'Duplicate MX flag'
+      key: mail.dup.mx
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.mx.has_duplicates
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: duplicate MX records (same priority/host) detected (1 = Yes, 0 = No).'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: c3b2a1908f7e6d5c4b3a29180706f5e4
+      name: 'Duplicate MX details'
+      key: mail.dup.mx.details
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: TEXT
+      trends: '0'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.mx.duplicates
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          try { var arr = JSON.parse(value); if (!Array.isArray(arr)) return value; return arr.join(", "); } catch (e) { return value; }
+      description: 'List of duplicate MX entries in the form \"prio host\".'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: b2a1908f7e6d5c4b3a29180706f5e4d3
+      name: 'Duplicate DMARC flag'
+      key: mail.dup.dmarc
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.dmarc.has_duplicates
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: multiple DMARC TXT records detected (1 = Yes, 0 = No).'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: a1908f7e6d5c4b3a29180706f5e4d3c2
+      name: 'Duplicate DKIM flag'
+      key: mail.dup.dkim
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.dkim.has_duplicates
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: selectors having more than one DKIM TXT (1 = Yes, 0 = No).'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: 908f7e6d5c4b3a29180706f5e4d3c2b1
+      name: 'Duplicate DKIM selectors'
+      key: mail.dup.dkim.selectors
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: TEXT
+      trends: '0'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.dkim.selectors
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          try { var arr = JSON.parse(value); if (!Array.isArray(arr)) return value; return arr.join(", "); } catch (e) { return value; }
+      description: 'Selectors that have multiple DKIM TXT records.'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: 7e6d5c4b3a29180706f5e4d3c2b1a0f9
+      name: 'Duplicate NS flag'
+      key: mail.dup.ns
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.ns.has_duplicates
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: duplicate NS names detected in the zone (1 = Yes, 0 = No).'
+      tags:
+      - tag: Application
+        value: Mail DNS
+    - uuid: 6d5c4b3a29180706f5e4d3c2b1a0f9e8
+      name: 'Duplicate SOA flag'
+      key: mail.dup.soa
+      type: DEPENDENT
+      master_item:
+        key: 'mail.dns.audit[{HOST.NAME},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+      value_type: UNSIGNED
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.duplicates.soa.has_duplicates
+      - type: BOOL_TO_DECIMAL
+      description: 'Flag: more than one SOA record detected (1 = Yes, 0 = No).'
       tags:
       - tag: Application
         value: Mail DNS

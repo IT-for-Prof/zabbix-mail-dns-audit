@@ -190,7 +190,8 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM |
-| `{$TEMPLATE_VERSION}` | `0.1.16` | Версия шаблона |
+| `{$TEMPLATE_VERSION}` | `0.1.18` | Версия шаблона |
+| `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
 ## Использование
 
@@ -222,7 +223,8 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 ### Результаты в Zabbix
 
 - **Latest Data**: просмотр элементов (mail.mx.count, mail.spf.status, mail.dnsbl.* и т.д.)
-- **Triggers**: настроенные триггеры на проблемы (отсутствие MX, DNSBL, медленный DNS)
+- **Triggers**: настроенные триггеры на проблемы (отсутствие MX, DNSBL, медленный DNS, nodata для master item)
+- **Duplicate checks**: флаги и триггеры на дубли MX, DMARC, DKIM селекторов, NS, SOA
 - **Dashboard**: "Mail DNS Audit Overview" отображает общий статус
 
 ## Тестирование
@@ -334,6 +336,8 @@ Triggers & Alerts
 Полная история: [CHANGELOG.md](CHANGELOG.md)
 
 Последние обновления:
+- **v0.1.18** (2025-12-26): Добавлен nodata-триггер для master item (обнаружение таймаутов/отсутствия данных).
+- **v0.1.17** (2025-12-26): Добавлены проверки и триггеры на дубликаты DNS (MX, DMARC, DKIM, NS, SOA).
 - **v0.1.16** (2025-12-24): Удалены UUID из шаблона для портативности.
 - **v0.1.15** (2025-12-24): Добавлен shuffle контроль резолверов через макрос `{$DNS_SHUFFLE}`
 - **v0.1.13** (2025-12-24): DNSBL fallback через альтернативные резолверы

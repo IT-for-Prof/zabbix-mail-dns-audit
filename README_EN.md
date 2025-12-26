@@ -190,7 +190,8 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.16` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.18` | Template version |
+| `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
 
@@ -222,7 +223,8 @@ All parameters are configured via template macros in Zabbix:
 ### Results in Zabbix
 
 - **Latest Data**: view items (mail.mx.count, mail.spf.status, mail.dnsbl.* etc)
-- **Triggers**: configured alerts for issues (missing MX, DNSBL, slow DNS)
+- **Triggers**: configured alerts for issues (missing MX, DNSBL, slow DNS, nodata for master item)
+- **Duplicate checks**: flags and triggers for duplicates of MX, DMARC, DKIM selectors, NS, SOA
 - **Dashboard**: "Mail DNS Audit Overview" displays overall status
 
 ## Testing
@@ -334,6 +336,8 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.18** (2025-12-26): Added nodata trigger for the master item (detecting timeouts/no data).
+- **v0.1.17** (2025-12-26): Added duplicate DNS checks/triggers (MX, DMARC, DKIM, NS, SOA).
 - **v0.1.16** (2025-12-24): Removed UUIDs from template for portability.
 - **v0.1.15** (2025-12-24): Added resolver shuffle control via `{$DNS_SHUFFLE}` macro
 - **v0.1.13** (2025-12-24): DNSBL fallback via alternate resolvers

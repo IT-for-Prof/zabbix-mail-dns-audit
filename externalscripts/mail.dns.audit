@@ -21,7 +21,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.16"
+VERSION = "0.1.18"
 
 DEFAULT_RESOLVER = "1.1.1.1"
 DEFAULT_TIMEOUT = 3.0
@@ -92,6 +92,17 @@ def query_records(
         return records, ttl, ad_flag
     except dns.exception.DNSException:
         return [], None, False
+
+
+def find_duplicates(seq: List[str]) -> List[str]:
+    seen: Dict[str, int] = {}
+    order: List[str] = []
+    for item in seq:
+        if item not in seen:
+            order.append(item)
+            seen[item] = 0
+        seen[item] += 1
+    return [item for item in order if seen.get(item, 0) > 1]
 
 
 def reverse_ipv4(ip: str) -> str:
@@ -553,6 +564,13 @@ def main() -> int:
         }
         lld = build_lld([], [], dnsbl_zones)
         simulated.update(lld)
+        simulated["duplicates"] = {
+            "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
+            "dmarc": {"has_duplicates": True, "count": 2},
+            "dkim": {"has_duplicates": True, "selectors": ["default"]},
+            "ns": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
+            "soa": {"has_duplicates": False, "count": 1},
+        }
         print(json.dumps(simulated, ensure_ascii=True, separators=(",", ":")))
         return 0
 
@@ -563,6 +581,13 @@ def main() -> int:
         "snapshots": {},
         "dnssec": {"ds_present": False, "ad_flag": False},
         "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
+        "duplicates": {
+            "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
+            "dmarc": {"has_duplicates": False, "count": 0},
+            "dkim": {"has_duplicates": False, "selectors": []},
+            "ns": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
+            "soa": {"has_duplicates": False, "count": 0},
+        },
         "meta": {
             "resolver_used": args.resolver,
             "query_time_ms": 0,
@@ -713,6 +738,41 @@ def main() -> int:
             "ns_hash": _hash(ns_records),
             "soa": {"serial": soa_serial, "hash": _hash([soa_serial])},
         }
+
+        dkim_selector_counts: Dict[str, int] = {}
+        for rec in dkim_records:
+            selector = rec.split(":", 1)[0]
+            dkim_selector_counts[selector] = dkim_selector_counts.get(selector, 0) + 1
+        dkim_duplicates = [sel for sel, cnt in dkim_selector_counts.items() if cnt > 1]
+
+        duplicates = {
+            "mx": {
+                "has_duplicates": len(find_duplicates(mx_hash_source)) > 0,
+                "duplicates": find_duplicates(mx_hash_source),
+                "total": len(mx_hash_source),
+                "unique": len(set(mx_hash_source)),
+            },
+            "dmarc": {
+                "has_duplicates": len(dmarc_txt) > 1,
+                "count": len(dmarc_txt),
+            },
+            "dkim": {
+                "has_duplicates": len(dkim_duplicates) > 0,
+                "selectors": dkim_duplicates,
+            },
+            "ns": {
+                "has_duplicates": len(find_duplicates(ns_records)) > 0,
+                "duplicates": find_duplicates(ns_records),
+                "total": len(ns_records),
+                "unique": len(set(ns_records)),
+            },
+            "soa": {
+                "has_duplicates": len(soa_records) > 1,
+                "count": len(soa_records),
+            },
+        }
+
+        result["duplicates"] = duplicates
 
         lld = build_lld(mx_list, ip_entries, dnsbl_zones)
         result.update(lld)
