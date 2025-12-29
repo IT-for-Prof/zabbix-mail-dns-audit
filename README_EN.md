@@ -168,7 +168,7 @@ All parameters are configured via template macros in Zabbix:
 
 | Macro | Value | Description |
 |-------|-------|-------------|
-| `{$DNS_RESOLVER}` | `127.0.0.1,9.9.9.10,...` | Resolver IPs (comma-separated). Empty = system |
+| `{$DNS_RESOLVER}` | (empty) | Resolver IPs (comma-separated). Empty = system |
 | `{$DNS_TIMEOUT_SEC}` | `3` | DNS query timeout (seconds) |
 | `{$DNS_SHUFFLE}` | `1` | Shuffle resolvers (1/0) |
 | `{$DNS_SLOW_MS}` | `3000` | Slow DNS threshold (ms) |
@@ -196,7 +196,7 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.25` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.26` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -342,6 +342,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.26** (2025-12-30): Fixed timeout issues — {$DNS_RESOLVER} is now empty by default to use the system resolver.
 - **v0.1.18** (2025-12-26): Added nodata trigger for the master item (detecting timeouts/no data).
 - **v0.1.17** (2025-12-26): Added duplicate DNS checks/triggers (MX, DMARC, DKIM, NS, SOA).
 - **v0.1.16** (2025-12-24): Removed UUIDs from template for portability.

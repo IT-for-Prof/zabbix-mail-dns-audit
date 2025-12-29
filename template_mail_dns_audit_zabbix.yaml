@@ -1273,8 +1273,8 @@ zabbix_export:
           value: 'zen.spamhaus.org,bl.spamcop.net'
           description: 'Comma-separated list of DNSBL zones to check against.'
         - macro: '{$DNS_RESOLVER}'
-          value: '127.0.0.1,9.9.9.10,149.112.112.10,208.67.222.222,208.67.220.220,8.26.56.26,8.20.247.20,95.85.95.85,2.56.220.2,62.76.76.62,62.76.62.76,195.208.4.1,195.208.5.1'
-          description: 'IP addresses of DNS resolvers, comma-separated. If empty, system resolvers from resolv.conf will be used. For DNSBL, prefer a local recursive resolver (Unbound/Bind) trusted in your network; public resolvers are often policy-blocked. With multiple resolvers, load is distributed (see {$DNS_SHUFFLE}=1 by default); set {$DNS_SHUFFLE}=0 to keep order.'
+          value: ''
+          description: 'IP addresses of DNS resolvers, comma-separated. If empty (default), system resolvers from resolv.conf will be used. Examples: 127.0.0.1,9.9.9.10 | 1.1.1.1,8.8.8.8. Previous list for reference: 127.0.0.1,9.9.9.10,149.112.112.10,208.67.222.222,208.67.220.220,8.26.56.26,8.20.247.20,95.85.95.85,2.56.220.2,62.76.76.62,62.76.62.76,195.208.4.1,195.208.5.1. For DNSBL, prefer a local recursive resolver (Unbound/Bind) trusted in your network; public resolvers are often policy-blocked. With multiple resolvers, load is distributed (see {$DNS_SHUFFLE}=1 by default); set {$DNS_SHUFFLE}=0 to keep order.'
         - macro: '{$DNS_SHUFFLE}'
           value: '1'
           description: 'Shuffle resolver list each run to distribute load across resolvers (1=shuffle, 0=keep order from {$DNS_RESOLVER}).'
@@ -1294,7 +1294,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.25
+          value: 0.1.26
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
