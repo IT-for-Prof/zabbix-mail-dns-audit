@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.27
+        Version: 0.1.28
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -63,8 +63,9 @@ zabbix_export:
           triggers:
             - uuid: f7ab9358db2b48008a3f2ca96064d55a
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.present)=0'
-              name: 'DKIM record missing'
+              name: 'DKIM record missing for {HOST.HOST} (selectors: {$DKIM_SELECTORS})'
               priority: HIGH
+              description: 'DKIM TXT record not found for selectors specified in {$DKIM_SELECTORS}. Check DNS configuration and selector names.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -112,8 +113,9 @@ zabbix_export:
           triggers:
             - uuid: 2f7642a96a2541d5a4a45808e5555555
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.pct)<100'
-              name: 'DMARC pct below 100'
+              name: 'DMARC pct below 100 ({ITEM.LASTVALUE}%) for {HOST.HOST}'
               priority: INFO
+              description: 'DMARC policy is applied to only {ITEM.LASTVALUE}% of messages. Recommended: set pct=100 for full protection.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -142,8 +144,9 @@ zabbix_export:
           triggers:
             - uuid: f6e7af347b614fdd8c919123d4444444
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none"'
-              name: 'DMARC policy is none'
+              name: 'DMARC policy is none for {HOST.HOST}'
               priority: INFO
+              description: 'DMARC policy is set to p=none. Recommended: upgrade to p=quarantine or p=reject for better protection.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -251,8 +254,9 @@ zabbix_export:
           triggers:
             - uuid: c3e3db501d7b4e289a3b5bd2a3f44444
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mta_sts.present)=0'
-              name: 'MTA-STS record missing'
+              name: 'MTA-STS record missing for {HOST.HOST}'
               priority: INFO
+              description: 'MTA-STS TXT record (_mta-sts.{HOST.HOST}) not found. This enables secure TLS enforcement for inbound mail.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -281,8 +285,9 @@ zabbix_export:
           triggers:
             - uuid: 7f2c3b550d2c4b529f476c37b5e55555
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.tls_rpt.present)=0'
-              name: 'TLS-RPT record missing'
+              name: 'TLS-RPT record missing for {HOST.HOST}'
               priority: INFO
+              description: 'TLS-RPT TXT record (_smtp._tls.{HOST.HOST}) not found. This enables reporting of TLS connection failures.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -311,8 +316,9 @@ zabbix_export:
           triggers:
             - uuid: b6a9e6d06c7d4c2b8b2f7a99a6666666
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.bimi.present)=0'
-              name: 'BIMI record missing'
+              name: 'BIMI record missing for {HOST.HOST}'
               priority: INFO
+              description: 'BIMI TXT record (default._bimi.{HOST.HOST}) not found. This enables brand indicators in email clients.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -371,8 +377,9 @@ zabbix_export:
           triggers:
             - uuid: 6dce0af48c254b3f84a95e15f6666666
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dns.query_time_ms)>{$DNS_SLOW_MS}'
-              name: 'DNS query slow (> {$DNS_SLOW_MS} ms)'
+              name: 'DNS query slow (> {$DNS_SLOW_MS}ms) for {HOST.HOST}'
               priority: WARNING
+              description: 'DNS audit script exceeded threshold ({$DNS_SLOW_MS}ms). Query time: {ITEM.LASTVALUE}ms. Check DNS resolver performance or network latency.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -505,8 +512,9 @@ zabbix_export:
           triggers:
             - uuid: f8bb157233044061b4f922cb7475829c
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnssec.ad_flag)=0'
-              name: 'DNSSEC AD flag missing'
+              name: 'DNSSEC AD flag missing for {HOST.HOST}'
               priority: INFO
+              description: 'DNSSEC AD (Authenticated Data) flag not set. Enable DNSSEC validation on your DNS resolver.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -532,8 +540,9 @@ zabbix_export:
           triggers:
             - uuid: de0696ceb51240ac85b06d8098e29059
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnssec.ds_present)=0'
-              name: 'DNSSEC DS missing'
+              name: 'DNSSEC DS record missing for {HOST.HOST}'
               priority: INFO
+              description: 'DS (Delegation Signer) record not found. Domain is not DNSSEC-signed. Consider enabling DNSSEC.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -643,8 +652,9 @@ zabbix_export:
           triggers:
             - uuid: 1c924f590c7d4f8388725fc7b9999999
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.ns.consistent)=0'
-              name: 'DNS authoritative NS out of sync'
+              name: '{HOST.HOST}: DNS authoritative NS out of sync (mismatch={ITEM.LASTVALUE})'
               priority: WARNING
+              description: 'Authoritative nameservers have inconsistent SOA serial numbers. Zone synchronization issue detected.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -691,9 +701,9 @@ zabbix_export:
           triggers:
             - uuid: 03e675490bd34169a6f2402b2110da52
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.ptr.generic.count)>0'
-              name: 'MX PTR generic/dynamic (count={ITEM.LASTVALUE1})'
+              name: '{HOST.HOST}: MX PTR generic/dynamic (count={ITEM.LASTVALUE1})'
               priority: INFO
-              description: 'PTR looks generic/dynamic.'
+              description: '{ITEM.LASTVALUE1} MX IP(s) have generic or dynamic PTR hostnames. This may affect email deliverability reputation.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -717,9 +727,9 @@ zabbix_export:
           triggers:
             - uuid: 7ace38110c3a4287b48dddf59e3cc996
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.ptr.missing.count)>0'
-              name: 'MX PTR missing (count={ITEM.LASTVALUE1})'
+              name: '{HOST.HOST}: MX PTR missing (count={ITEM.LASTVALUE1})'
               priority: HIGH
-              description: 'One or more MX IPs have no PTR record.'
+              description: '{ITEM.LASTVALUE1} MX IP(s) have no PTR record. Add reverse DNS records to improve email deliverability.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -743,9 +753,9 @@ zabbix_export:
           triggers:
             - uuid: 805194d959e4420587a5e14514bec6b6
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.ptr.nofcrdns.count)>0'
-              name: 'MX PTR FCrDNS failed (count={ITEM.LASTVALUE1})'
+              name: '{HOST.HOST}: MX PTR FCrDNS failed (count={ITEM.LASTVALUE1})'
               priority: AVERAGE
-              description: 'PTR exists but does not resolve back to same IP.'
+              description: '{ITEM.LASTVALUE1} MX IP(s) have PTR records that do not resolve back to the same IP. Fix PTR/A record mismatch.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -843,8 +853,9 @@ zabbix_export:
           triggers:
             - uuid: 8c01b7d631df4a4db632c8d5c2222222
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.plus_all)=1'
-              name: 'SPF contains +all (allow all)'
+              name: '{HOST.HOST}: SPF contains +all (allow all)'
               priority: HIGH
+              description: 'SPF record contains +all mechanism, which allows ANY server to send mail for this domain. Recommended: use -all (fail) instead.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -873,8 +884,9 @@ zabbix_export:
           triggers:
             - uuid: 1f64de7f5d934f0d8d7bd7e0c3333333
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.neutral_all)=1'
-              name: 'SPF contains ?all (neutral)'
+              name: '{HOST.HOST}: SPF contains ?all (neutral)'
               priority: INFO
+              description: 'SPF record uses ?all (neutral) which provides no SPF fail action. Recommended: use -all (fail) or ~all (softfail).'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
@@ -1217,9 +1229,9 @@ zabbix_export:
           trigger_prototypes:
             - uuid: 9f3fd9925f1e4b4f81ce3f3c8cfa9a90
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.status[{#MXIP}])="CHECK FAILED" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
-              name: 'MX {#MXHOST} IP {#MXIP} DNSBL check failed: {ITEM.LASTVALUE2}'
+              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} DNSBL check failed'
               priority: WARNING
-              description: 'Alert when a technical failure (e.g., timeout) occurs during a DNSBL check.'
+              description: 'Technical failure during DNSBL check. Error: {ITEM.LASTVALUE2}'
               manual_close: 'YES'
               tags:
                 - tag: Application
@@ -1228,9 +1240,9 @@ zabbix_export:
                   value: mail-dns
             - uuid: 0a2c5e1a0a434f7e9f6a55bfe0ec74d1
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.status[{#MXIP}])="POLICY/ERROR" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
-              name: 'MX {#MXHOST} IP {#MXIP} DNSBL policy/error: {ITEM.LASTVALUE2}'
+              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} DNSBL policy/error'
               priority: WARNING
-              description: 'Alert when a DNSBL provider blocks your query due to policy (e.g., open resolver, rate limits).'
+              description: 'DNSBL provider blocks queries: {ITEM.LASTVALUE2}. Reason: Rate limit or open resolver policy.'
               manual_close: 'YES'
               tags:
                 - tag: Application
@@ -1239,9 +1251,9 @@ zabbix_export:
                   value: mail-dns
             - uuid: 6e43d4d3f8f44f1ea4e7fd5fce6cb9e4
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed[{#MXIP}])=1 and last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.zone[{#MXIP}])<>"*UNKNOWN*"'
-              name: 'MX {#MXHOST} IP {#MXIP} listed in DNSBL {ITEM.LASTVALUE2}'
+              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} listed in DNSBL {ITEM.LASTVALUE2}'
               priority: HIGH
-              description: 'Alert when an MX IP address is found in a blackhole list.'
+              description: 'MX IP address is found in blackhole list. Reason: {ITEM.LASTVALUE3}. Contact DNSBL operator or review mail server configuration.'
               manual_close: 'YES'
               tags:
                 - tag: Application
@@ -1294,7 +1306,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.27
+          value: 0.1.28
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
