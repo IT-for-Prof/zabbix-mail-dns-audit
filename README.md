@@ -47,20 +47,75 @@ Zabbix Mail DNS Audit — интегрированное решение для �
 
 ### Шаг 1: Установка зависимостей
 
-**Ubuntu/Debian:**
+#### Ubuntu/Debian 12+ и Python 3.11+ (PEP 668)
+
+Начиная с Debian 12/Ubuntu 23.10, система защищает глобальный Python от модификации через pip. Используйте один из способов:
+
+**Способ A: виртуальное окружение (рекомендуется)**
+
+```bash
+apt update
+apt install -y python3-full python3-venv
+
+mkdir -p /opt/zabbix-dns-monitoring
+cd /opt/zabbix-dns-monitoring
+
+python3 -m venv .venv
+. .venv/bin/activate
+
+pip install -U pip
+pip install dnspython
+```
+
+Дальнейший запуск скрипта:
+
+```bash
+. /opt/zabbix-dns-monitoring/.venv/bin/activate
+python mail.dns.audit example.com
+```
+
+Или с полным путём:
+
+```bash
+/opt/zabbix-dns-monitoring/.venv/bin/python mail.dns.audit example.com
+```
+
+**Способ B: системный пакет (если доступен)**
+
+```bash
+apt update
+apt install -y python3-dnspython
+```
+
+Если пакет `python3-dnspython` не найден в репозитории, используйте Способ A.
+
+**Способ C: для миграции существующего кода (не рекомендуется)**
+
+Если абсолютно необходимо нарушить защиту (на свой риск):
+
+```bash
+pip3 install dnspython --break-system-packages
+```
+
+Это может нарушить системные зависимости при обновлении Python.
+
+#### Ubuntu/Debian (старые версии до 22.04)
+
 ```bash
 apt update
 apt install -y python3 python3-pip
 pip3 install dnspython
 ```
 
-**CentOS/RHEL:**
+#### CentOS/RHEL
+
 ```bash
 yum install -y python3 python3-pip
 pip3 install dnspython
 ```
 
-**Alpine (контейнер):**
+#### Alpine (контейнер)
+
 ```bash
 apk add --no-cache python3 py3-pip
 pip3 install dnspython
@@ -266,6 +321,43 @@ DEBUG_DNSBL=1 ./externalscripts/mail.dns.audit example.com
 ```
 
 ## Устранение неполадок
+
+### Ошибка: `error: externally-managed-environment` при установке dnspython
+
+Это ошибка PEP 668 в Debian 12+ и Ubuntu 23.10+, защищающая системный Python.
+
+**Решение: используйте виртуальное окружение**
+
+```bash
+apt install -y python3-full python3-venv
+
+# Создайте окружение
+python3 -m venv /opt/dns-venv
+. /opt/dns-venv/bin/activate
+
+# Установите пакет
+pip install dnspython
+```
+
+Запуск скрипта Zabbix с venv:
+
+```bash
+/opt/dns-venv/bin/python /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
+```
+
+Или добавьте в конфиг Zabbix (если запуск через внешний скрипт):
+
+```bash
+#!/bin/bash
+. /opt/dns-venv/bin/activate
+/usr/lib/zabbix/externalscripts/mail.dns.audit "$@"
+```
+
+**Альтернатива: системный пакет (если доступен)**
+
+```bash
+apt install -y python3-dnspython
+```
 
 ### Python 3 не найден
 

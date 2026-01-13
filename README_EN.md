@@ -47,20 +47,75 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 
 ### Step 1: Install Dependencies
 
-**Ubuntu/Debian:**
+#### Ubuntu/Debian 12+ and Python 3.11+ (PEP 668)
+
+Starting with Debian 12/Ubuntu 23.10, the system protects global Python from modification via pip. Use one of the methods:
+
+**Method A: Virtual environment (recommended)**
+
+```bash
+apt update
+apt install -y python3-full python3-venv
+
+mkdir -p /opt/zabbix-dns-monitoring
+cd /opt/zabbix-dns-monitoring
+
+python3 -m venv .venv
+. .venv/bin/activate
+
+pip install -U pip
+pip install dnspython
+```
+
+Running the script afterwards:
+
+```bash
+. /opt/zabbix-dns-monitoring/.venv/bin/activate
+python mail.dns.audit example.com
+```
+
+Or with full path:
+
+```bash
+/opt/zabbix-dns-monitoring/.venv/bin/python mail.dns.audit example.com
+```
+
+**Method B: System package (if available)**
+
+```bash
+apt update
+apt install -y python3-dnspython
+```
+
+If the `python3-dnspython` package is not found in the repository, use Method A.
+
+**Method C: For migrating existing code (not recommended)**
+
+If absolutely necessary to break the protection (at your own risk):
+
+```bash
+pip3 install dnspython --break-system-packages
+```
+
+This may break system dependencies when Python is updated.
+
+#### Ubuntu/Debian (older versions before 22.04)
+
 ```bash
 apt update
 apt install -y python3 python3-pip
 pip3 install dnspython
 ```
 
-**CentOS/RHEL:**
+#### CentOS/RHEL
+
 ```bash
 yum install -y python3 python3-pip
 pip3 install dnspython
 ```
 
-**Alpine (container):**
+#### Alpine (container)
+
 ```bash
 apk add --no-cache python3 py3-pip
 pip3 install dnspython
@@ -266,6 +321,43 @@ DEBUG_DNSBL=1 ./externalscripts/mail.dns.audit example.com
 ```
 
 ## Troubleshooting
+
+### Error: `error: externally-managed-environment` when installing dnspython
+
+This is a PEP 668 error in Debian 12+ and Ubuntu 23.10+, which protects the system Python.
+
+**Solution: use virtual environment**
+
+```bash
+apt install -y python3-full python3-venv
+
+# Create environment
+python3 -m venv /opt/dns-venv
+. /opt/dns-venv/bin/activate
+
+# Install package
+pip install dnspython
+```
+
+Running the Zabbix script with venv:
+
+```bash
+/opt/dns-venv/bin/python /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
+```
+
+Or add to Zabbix config (if running as external script):
+
+```bash
+#!/bin/bash
+. /opt/dns-venv/bin/activate
+/usr/lib/zabbix/externalscripts/mail.dns.audit "$@"
+```
+
+**Alternative: system package (if available)**
+
+```bash
+apt install -y python3-dnspython
+```
 
 ### Python 3 Not Found
 
