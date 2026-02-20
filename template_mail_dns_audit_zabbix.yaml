@@ -153,6 +153,16 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+            - uuid: fe7655707cb74c8cbee9b1c8acafdbc4
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none" and (prev(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="quarantine" or prev(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="reject")'
+              name: 'DMARC policy downgraded to none for {HOST.HOST} (was {ITEM.PREVVALUE})'
+              priority: HIGH
+              description: 'DMARC policy was downgraded from {ITEM.PREVVALUE} to none. This is a security regression — messages will no longer be quarantined or rejected. Restore p=quarantine or p=reject immediately.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 5fd95e5b13494827ba65a565950203e7
           name: 'DMARC present'
           type: DEPENDENT
