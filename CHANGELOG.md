@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.30] - 2026-02-20
+
+### Changed
+- DMARC `p=none` trigger severity raised from INFO to WARNING.
+
+### Added
+- New HIGH trigger: DMARC policy downgraded to none (detects regression from `quarantine`/`reject` → `none` using `last(,#2)`).
+
 ## [0.1.29] - 2026-02-20
 
 ### Added
