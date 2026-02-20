@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.28
+        Version: 0.1.29
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -22,6 +22,7 @@ zabbix_export:
         - DNSSEC (DS records)
         - NS and SOA records
         - Duplicate DNS records: MX, DMARC, DKIM selectors, NS, SOA
+        - Mail client autoconfiguration DNS (autoconfig, autodiscover, SRV)
       groups:
         - name: Templates/Applications
       items:
