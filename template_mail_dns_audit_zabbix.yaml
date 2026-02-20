@@ -380,6 +380,36 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+        - uuid: b1be287f25054763937e2e2ae687c06a
+          name: 'Script version'
+          type: DEPENDENT
+          key: mail.script.version
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Version of the mail.dns.audit script that produced the last result. Used to detect outdated scripts on proxies.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.meta.version
+              error_handler: CUSTOM_VALUE
+              error_handler_params: unknown
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: fb2722cc600e41df9157ae06940eeb00
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.script.version)<>"{$TEMPLATE_VERSION}"'
+              name: 'Script version mismatch on {HOST.HOST} (running {ITEM.VALUE}, expected {$TEMPLATE_VERSION})'
+              priority: WARNING
+              description: 'The mail.dns.audit script version does not match the template version. Update the script on the Zabbix server or proxy handling this host.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 1af104976a02494da0fdc8758fccb868
           name: 'DNS query time ms'
           type: DEPENDENT
@@ -1471,7 +1501,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.31
+          value: 0.1.32
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

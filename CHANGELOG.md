@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.32] - 2026-02-20
+
+### Added
+- New dependent item `mail.script.version` (TEXT): extracts `$.meta.version` from the master item JSON, showing which script version produced the last result.
+- New WARNING trigger: fires when `mail.script.version` does not match `{$TEMPLATE_VERSION}`, making outdated scripts on proxies immediately visible in problems.
+
 ## [0.1.31] - 2026-02-20
 
 ### Fixed
