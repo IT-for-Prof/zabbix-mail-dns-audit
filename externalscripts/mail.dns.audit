@@ -292,6 +292,13 @@ def check_mail_client_config(resolver: dns.resolver.Resolver, domain: str) -> Di
     Check DNS records for mail client autoconfiguration.
     Checks autoconfig.<domain> (A/CNAME), autodiscover.<domain> (A/CNAME),
     and _autodiscover._tcp.<domain> (SRV).
+    Returns:
+    {
+      "autoconfig": {"present": bool, "type": str, "records": [...]},
+      "autodiscover": {"present": bool, "type": str, "records": [...]},
+      "autodiscover_srv": {"present": bool, "records": [...]}
+    }
+    type is "A", "CNAME", or "MISSING".
     """
     def _check_a_cname(host: str) -> Dict:
         cname_records, _, _ = query_records(resolver, host, "CNAME")
