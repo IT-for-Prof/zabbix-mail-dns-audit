@@ -358,6 +358,17 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: f6a7b8c9d0e14f2a3b4c5d6e7f8a9b0c
+              expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+              name: 'DNS audit script error on {HOST.HOST}'
+              priority: HIGH
+              description: 'The mail DNS audit script returned an error message. Check Zabbix server connectivity to the external script, DNS resolver availability, and script configuration.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 1af104976a02494da0fdc8758fccb868
           name: 'DNS query time ms'
           type: DEPENDENT
