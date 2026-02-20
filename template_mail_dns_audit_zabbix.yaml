@@ -146,7 +146,7 @@ zabbix_export:
             - uuid: f6e7af347b614fdd8c919123d4444444
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none"'
               name: 'DMARC policy is none for {HOST.HOST}'
-              priority: INFO
+              priority: WARNING
               description: 'DMARC policy is set to p=none. Recommended: upgrade to p=quarantine or p=reject for better protection.'
               tags:
                 - tag: Application
