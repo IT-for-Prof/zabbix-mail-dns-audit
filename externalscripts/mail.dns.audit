@@ -21,7 +21,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.21"
+VERSION = "0.1.29"
 
 DEFAULT_RESOLVER = "1.1.1.1"
 DEFAULT_TIMEOUT = 3.0
@@ -285,6 +285,33 @@ def check_bimi(resolver: dns.resolver.Resolver, domain: str) -> Dict:
     """
     bimi_txt, _, _ = query_records(resolver, f"default._bimi.{domain}", "TXT")
     return {"present": len(bimi_txt) > 0, "txt": bimi_txt}
+
+
+def check_mail_client_config(resolver: dns.resolver.Resolver, domain: str) -> Dict:
+    """
+    Check DNS records for mail client autoconfiguration.
+    Checks autoconfig.<domain> (A/CNAME), autodiscover.<domain> (A/CNAME),
+    and _autodiscover._tcp.<domain> (SRV).
+    """
+    def _check_a_cname(host: str) -> Dict:
+        cname_records, _, _ = query_records(resolver, host, "CNAME")
+        if cname_records:
+            return {"present": True, "type": "CNAME", "records": cname_records}
+        a_records, _, _ = query_records(resolver, host, "A")
+        if a_records:
+            return {"present": True, "type": "A", "records": a_records}
+        return {"present": False, "type": "MISSING", "records": []}
+
+    autoconfig = _check_a_cname(f"autoconfig.{domain}")
+    autodiscover = _check_a_cname(f"autodiscover.{domain}")
+    srv_records, _, _ = query_records(resolver, f"_autodiscover._tcp.{domain}", "SRV")
+    autodiscover_srv = {"present": bool(srv_records), "records": srv_records}
+
+    return {
+        "autoconfig": autoconfig,
+        "autodiscover": autodiscover,
+        "autodiscover_srv": autodiscover_srv,
+    }
 
 
 def check_ns_sync(
@@ -734,6 +761,11 @@ def main() -> int:
                 "tls_rpt": {"present": False, "txt": []},
             },
             "bimi": {"present": False, "txt": []},
+            "mail_client_config": {
+                "autoconfig": {"present": False, "type": "MISSING", "records": []},
+                "autodiscover": {"present": False, "type": "MISSING", "records": []},
+                "autodiscover_srv": {"present": False, "records": []},
+            },
             "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
         }
         lld = build_lld([], [], dnsbl_zones)
@@ -757,6 +789,11 @@ def main() -> int:
         "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
         "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
         "bimi": {"present": False, "txt": []},
+        "mail_client_config": {
+            "autoconfig": {"present": False, "type": "MISSING", "records": []},
+            "autodiscover": {"present": False, "type": "MISSING", "records": []},
+            "autodiscover_srv": {"present": False, "records": []},
+        },
         "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
         "duplicates": {
             "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
@@ -900,6 +937,9 @@ def main() -> int:
 
         # BIMI
         result["bimi"] = check_bimi(resolver, domain)
+
+        # Mail client autoconfiguration DNS records
+        result["mail_client_config"] = check_mail_client_config(resolver, domain)
 
         # DKIM selectors
         dkim_records: List[str] = []
