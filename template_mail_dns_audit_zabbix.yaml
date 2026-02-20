@@ -1001,6 +1001,104 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+        - uuid: a1b2c3d4e5f64a7b8c9d0e1f2a3b4c5d
+          name: 'Autoconfig DNS present'
+          type: DEPENDENT
+          key: mail.autoconfig.present
+          delay: '0'
+          description: '1 = autoconfig.<domain> resolves (A or CNAME), 0 = missing. Used by Thunderbird and Mozilla-compatible mail clients.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mail_client_config.autoconfig.present
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: b2c3d4e5f6a74b8c9d0e1f2a3b4c5d6e
+          name: 'Autoconfig DNS record type'
+          type: DEPENDENT
+          key: mail.autoconfig.type
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Record type for autoconfig.<domain>: A, CNAME, or MISSING.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mail_client_config.autoconfig.type
+              error_handler: CUSTOM_VALUE
+              error_handler_params: MISSING
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: c3d4e5f6a7b84c9d0e1f2a3b4c5d6e7f
+          name: 'Autodiscover DNS present'
+          type: DEPENDENT
+          key: mail.autodiscover.present
+          delay: '0'
+          description: '1 = autodiscover.<domain> resolves (A or CNAME), 0 = missing. Used by Outlook and Exchange-compatible clients.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mail_client_config.autodiscover.present
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: d4e5f6a7b8c94d0e1f2a3b4c5d6e7f8a
+          name: 'Autodiscover DNS record type'
+          type: DEPENDENT
+          key: mail.autodiscover.type
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Record type for autodiscover.<domain>: A, CNAME, or MISSING.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mail_client_config.autodiscover.type
+              error_handler: CUSTOM_VALUE
+              error_handler_params: MISSING
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: e5f6a7b8c9d04e1f2a3b4c5d6e7f8a9b
+          name: 'Autodiscover SRV present'
+          type: DEPENDENT
+          key: mail.autodiscover_srv.present
+          delay: '0'
+          description: '1 = _autodiscover._tcp.<domain> SRV record found, 0 = missing. SRV is the fallback autodiscover mechanism.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mail_client_config.autodiscover_srv.present
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
       discovery_rules:
         - uuid: addc1d564a334496bd00547f47b06549
           name: 'DNSBL zone discovery'
