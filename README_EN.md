@@ -34,6 +34,7 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 - ✅ IPv6 support (optional)
 - ✅ Multiple DNS resolvers with shuffling
 - ✅ Local result caching
+- ✅ Mail client autoconfiguration DNS checks (autoconfig, autodiscover, SRV)
 
 ## Requirements
 
@@ -251,7 +252,7 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.26` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.29` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -434,13 +435,13 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.29** (2026-02-20): Added mail client autoconfiguration DNS checks (autoconfig, autodiscover, SRV) with corresponding triggers.
+- **v0.1.28** (2026-02-20): Improved trigger informativeness — added {HOST.HOST}, contextual data, and descriptions with remediation guidance.
+- **v0.1.27** (2026-01-13): Replaced {HOST.NAME} with {HOST.HOST} in item keys for reliability.
 - **v0.1.26** (2025-12-30): Fixed timeout issues — {$DNS_RESOLVER} is now empty by default to use the system resolver.
 - **v0.1.18** (2025-12-26): Added nodata trigger for the master item (detecting timeouts/no data).
 - **v0.1.17** (2025-12-26): Added duplicate DNS checks/triggers (MX, DMARC, DKIM, NS, SOA).
 - **v0.1.16** (2025-12-24): Removed UUIDs from template for portability.
-- **v0.1.15** (2025-12-24): Added resolver shuffle control via `{$DNS_SHUFFLE}` macro
-- **v0.1.13** (2025-12-24): DNSBL fallback via alternate resolvers
-- **v0.1.10** (2025-12-24): GitHub repository link in description
 
 ## License
 

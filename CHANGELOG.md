@@ -9,7 +9,8 @@ All notable changes to this project will be documented in this file.
 - Three new triggers: autoconfig missing (INFO), autodiscover missing (INFO), no autoconfiguration at all (WARNING).
 - New DNS script error trigger (`mail.dns.error` non-empty → HIGH) used as dependency to suppress autoconfiguration alerts during script failures.
 
-## [Unreleased]
+## [0.1.28] - 2026-02-20
+
 - Значительно улучшена информативность триггеров за счет добавления контекстной информации.
 - Все триггеры теперь включают {HOST.HOST} для четкой идентификации целевого домена.
 - Расширены описания триггеров с рекомендациями по исправлению проблем.
