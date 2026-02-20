@@ -1032,6 +1032,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: a7b8c9d0e1f24a3b4c5d6e7f8a9b0c1d
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autoconfig.present)=0'
+              name: 'Autoconfig DNS missing for {HOST.HOST}'
+              priority: INFO
+              description: 'autoconfig.{HOST.HOST} A/CNAME record not found. Thunderbird and other Mozilla-compatible mail clients will not be able to auto-discover mail server settings.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: b2c3d4e5f6a74b8c9d0e1f2a3b4c5d6e
           name: 'Autoconfig DNS record type'
           type: DEPENDENT
@@ -1071,6 +1086,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: b8c9d0e1f2a34b4c5d6e7f8a9b0c1d2e
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autodiscover.present)=0'
+              name: 'Autodiscover DNS missing for {HOST.HOST}'
+              priority: INFO
+              description: 'autodiscover.{HOST.HOST} A/CNAME record not found. Outlook and Exchange-compatible clients will not be able to auto-discover mail server settings.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: d4e5f6a7b8c94d0e1f2a3b4c5d6e7f8a
           name: 'Autodiscover DNS record type'
           type: DEPENDENT
@@ -1110,6 +1140,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: c9d0e1f2a3b44c5d6e7f8a9b0c1d2e3f
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autoconfig.present)=0 and last(/Template Mail DNS Audit Zabbix/mail.autodiscover.present)=0 and last(/Template Mail DNS Audit Zabbix/mail.autodiscover_srv.present)=0'
+              name: 'No mail client autoconfiguration for {HOST.HOST}'
+              priority: WARNING
+              description: 'None of the standard mail client autoconfiguration DNS mechanisms are present (autoconfig A/CNAME, autodiscover A/CNAME, _autodiscover._tcp SRV). Mail clients will fall back to manual configuration or ISP database lookup.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
       discovery_rules:
         - uuid: addc1d564a334496bd00547f47b06549
           name: 'DNSBL zone discovery'
