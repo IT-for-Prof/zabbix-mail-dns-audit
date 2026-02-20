@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.31] - 2026-02-20
+
+### Fixed
+- Script shebang changed from `#!/usr/bin/env python3` to `#!/usr/bin/python3` — Zabbix runs external scripts with a minimal environment (no PATH), causing `env` to fail to locate the interpreter.
+- Added `.gitattributes` to enforce LF line endings for `externalscripts/mail.dns.audit` and `*.py` — CRLF from Windows would corrupt the shebang with a trailing `\r`, making the interpreter path invalid on Linux.
+
 ## [0.1.30] - 2026-02-20
 
 ### Changed

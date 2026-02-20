@@ -252,7 +252,7 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM |
-| `{$TEMPLATE_VERSION}` | `0.1.30` | Версия шаблона |
+| `{$TEMPLATE_VERSION}` | `0.1.31` | Версия шаблона |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
 ## Использование
@@ -435,6 +435,7 @@ Triggers & Alerts
 Полная история: [CHANGELOG.md](CHANGELOG.md)
 
 Последние обновления:
+- **v0.1.31** (2026-02-20): Исправлен shebang скрипта (`#!/usr/bin/python3`); добавлен `.gitattributes` для LF-окончаний строк — устраняет сбой запуска скрипта из Zabbix из-за CRLF и отсутствия PATH.
 - **v0.1.30** (2026-02-20): Повышена важность триггера DMARC p=none до WARNING; добавлен триггер HIGH на откат политики DMARC с quarantine/reject → none.
 - **v0.1.29** (2026-02-20): Добавлены проверки DNS автоконфигурации почтового клиента (autoconfig, autodiscover, SRV) и соответствующие триггеры.
 - **v0.1.28** (2026-02-20): Улучшена информативность триггеров — добавлены {HOST.HOST}, контекстные данные и описания с рекомендациями.

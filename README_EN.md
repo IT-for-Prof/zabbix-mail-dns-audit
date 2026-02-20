@@ -252,7 +252,7 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.30` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.31` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -435,6 +435,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.31** (2026-02-20): Fixed script shebang (`#!/usr/bin/python3`); added `.gitattributes` for LF line endings — fixes script execution failure in Zabbix caused by CRLF and missing PATH.
 - **v0.1.30** (2026-02-20): Raised DMARC p=none trigger severity to WARNING; added HIGH trigger for DMARC policy downgrade (quarantine/reject → none).
 - **v0.1.29** (2026-02-20): Added mail client autoconfiguration DNS checks (autoconfig, autodiscover, SRV) with corresponding triggers.
 - **v0.1.28** (2026-02-20): Improved trigger informativeness — added {HOST.HOST}, contextual data, and descriptions with remediation guidance.
