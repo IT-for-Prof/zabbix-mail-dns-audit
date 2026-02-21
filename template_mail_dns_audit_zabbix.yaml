@@ -684,6 +684,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: 10c718decde54e4dbc829ada626bf400
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.count)=0'
+              name: '{HOST.HOST}: No MX records found'
+              priority: HIGH
+              description: 'No MX records were found for this domain. The domain cannot receive email. Verify MX records exist and DNS is resolving correctly.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 2a4c7ff309b542ec9be3da4dc60d908d
           name: 'MX hash'
           type: DEPENDENT
