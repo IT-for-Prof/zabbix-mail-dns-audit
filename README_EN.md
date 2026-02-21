@@ -252,7 +252,7 @@ All parameters are configured via template macros in Zabbix:
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
-| `{$TEMPLATE_VERSION}` | `0.1.34` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.35` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -435,6 +435,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **0.1.35**: Macros to skip DNSSEC/MTA-STS/TLS-RPT/BIMI checks per host ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
 - **0.1.34**: Bugfix — DMARC rua= null handling, SPF a:hostname mx_covered detection, script VERSION sync
 - **0.1.33**: 8 new triggers (MX missing, SPF RFC violations, hash change detection, DMARC rua, DNSBL failures), error dependencies on all triggers, NS trigger fix, {$MAIL_CLIENT_AUTOCONFIG_CHECK} macro
 - **v0.1.32** (2026-02-20): Added `mail.script.version` item and WARNING trigger for version mismatch against `{$TEMPLATE_VERSION}` — detects outdated script on proxies.

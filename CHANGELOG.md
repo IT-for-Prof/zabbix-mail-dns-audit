@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.35] - 2026-02-22
+
+### Added
+- Macro {$CHECK_DNSSEC} (default 1) — set to 0 on hosts without DNSSEC to suppress AD flag and DS record alerts
+- Macro {$CHECK_MTA_STS} (default 1) — set to 0 on hosts without MTA-STS to suppress MTA-STS missing alert
+- Macro {$CHECK_TLS_RPT} (default 1) — set to 0 on hosts without TLS-RPT to suppress TLS-RPT missing alert
+- Macro {$CHECK_BIMI} (default 1) — set to 0 on hosts without BIMI to suppress BIMI missing alert
+
 ## [0.1.34] - 2026-02-22
 
 ### Fixed
