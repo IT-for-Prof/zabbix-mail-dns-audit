@@ -437,6 +437,16 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+            - uuid: 491628aae82b449d80bc4daa60877120
+              expression: 'nodata(/Template Mail DNS Audit Zabbix/mail.dns.query_time_ms,3h)=1'
+              name: 'DNS audit script not running on {HOST.HOST} (no data for 3h)'
+              priority: HIGH
+              description: 'The mail.dns.audit external script has not produced results for over 3 hours. Check that the script exists at the external scripts path, is executable, and the Zabbix server can run it.'
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 5f2c0b91a7d74a4c8c9e6cbdfe88b605
           name: 'DNSBL check failed count'
           type: DEPENDENT
@@ -1053,6 +1063,41 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+        - uuid: 281d2d3f02d14b8fb48cc43c75d0e9c4
+          name: 'SPF MX hosts covered'
+          type: DEPENDENT
+          key: mail.spf.mx_covered
+          delay: '0'
+          description: '1 = MX hosts are authorized to send in SPF (via mx mechanism or include: matching MX hostname), 0 = not covered.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf_analysis.mx_covered
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'false'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (value===true || value=="true" || value=="1") ? 1 : 0;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: a844484f7afd4240a24aff604f9ccff2
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.mx_covered)=0 and last(/Template Mail DNS Audit Zabbix/mail.mx.count)>0 and {$SPF_CHECK_MX_COVERAGE}=1'
+              name: '{HOST.HOST}: MX hosts not authorized in SPF'
+              priority: AVERAGE
+              description: 'MX records exist but MX hosts are not covered as authorized senders in the SPF record. If your MX hosts send outbound mail (common for standalone servers), add the mx mechanism or an include: that authorizes them. Set {$SPF_CHECK_MX_COVERAGE}=0 on this host to suppress if MX is intentionally receive-only.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 3b6bd2eae47141259cb6a0c8e2fc89b9
           name: 'Autoconfig DNS present'
           type: DEPENDENT
@@ -1494,6 +1539,9 @@ zabbix_export:
         - macro: '{$MAX_MX_CHECK}'
           value: '5'
           description: 'Maximum number of MX records to process for discovery and detailed checks.'
+        - macro: '{$SPF_CHECK_MX_COVERAGE}'
+          value: '1'
+          description: 'Set to 1 to alert when MX hosts are not authorized in SPF (default for standalone mail servers). Set to 0 on hosts where MX is intentionally receive-only and does not send outbound mail.'
         - macro: '{$SPF_EXPECT_ALL}'
           value: '-all|~all'
           description: 'Regex for expected "all" mechanism in SPF. Usually "-all" (Fail) or "~all" (SoftFail) is recommended.'
