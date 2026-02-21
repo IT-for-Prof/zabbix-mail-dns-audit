@@ -1306,7 +1306,7 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: 739fafd96c09417e84d05e8f8bd016d4
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autoconfig.present)=0'
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autoconfig.present)=0 and {$MAIL_CLIENT_AUTOCONFIG_CHECK}=1'
               name: 'Autoconfig DNS missing for {HOST.HOST}'
               priority: INFO
               description: 'autoconfig.{HOST.HOST} A/CNAME record not found. Thunderbird and other Mozilla-compatible mail clients will not be able to auto-discover mail server settings.'
@@ -1360,7 +1360,7 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: 40b29aa5e61f421d8695d6b95c4e96f1
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autodiscover.present)=0'
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autodiscover.present)=0 and {$MAIL_CLIENT_AUTOCONFIG_CHECK}=1'
               name: 'Autodiscover DNS missing for {HOST.HOST}'
               priority: INFO
               description: 'autodiscover.{HOST.HOST} A/CNAME record not found. Outlook and Exchange-compatible clients will not be able to auto-discover mail server settings.'
@@ -1414,7 +1414,7 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: cb8901aef1bf4b8b91f3f4e51391a189
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autoconfig.present)=0 and last(/Template Mail DNS Audit Zabbix/mail.autodiscover.present)=0 and last(/Template Mail DNS Audit Zabbix/mail.autodiscover_srv.present)=0'
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.autoconfig.present)=0 and last(/Template Mail DNS Audit Zabbix/mail.autodiscover.present)=0 and last(/Template Mail DNS Audit Zabbix/mail.autodiscover_srv.present)=0 and {$MAIL_CLIENT_AUTOCONFIG_CHECK}=1'
               name: 'No mail client autoconfiguration for {HOST.HOST}'
               priority: WARNING
               description: 'None of the standard mail client autoconfiguration DNS mechanisms are present (autoconfig A/CNAME, autodiscover A/CNAME, _autodiscover._tcp SRV). Mail clients will fall back to manual configuration or ISP database lookup.'
@@ -1725,6 +1725,9 @@ zabbix_export:
         - macro: '{$MAX_MX_CHECK}'
           value: '5'
           description: 'Maximum number of MX records to process for discovery and detailed checks.'
+        - macro: '{$MAIL_CLIENT_AUTOCONFIG_CHECK}'
+          value: '1'
+          description: 'Set to 0 on hosts that intentionally have no autoconfig/autodiscover DNS records to suppress mail client autoconfiguration alerts.'
         - macro: '{$SPF_CHECK_MX_COVERAGE}'
           value: '1'
           description: 'Set to 1 to alert when MX hosts are not authorized in SPF (default for standalone mail servers). Set to 0 on hosts where MX is intentionally receive-only and does not send outbound mail.'
