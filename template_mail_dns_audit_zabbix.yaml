@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.35
+        Version: 0.1.36
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -1655,7 +1655,7 @@ zabbix_export:
           trigger_prototypes:
             - uuid: 9f3fd9925f1e4b4f81ce3f3c8cfa9a90
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.status[{#MXIP}])="CHECK FAILED" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
-              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} DNSBL check failed'
+              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} DNSBL check failed: {ITEM.LASTVALUE2}'
               priority: WARNING
               description: 'Technical failure during DNSBL check. Error: {ITEM.LASTVALUE2}'
               manual_close: 'YES'
@@ -1666,7 +1666,7 @@ zabbix_export:
                   value: mail-dns
             - uuid: 0a2c5e1a0a434f7e9f6a55bfe0ec74d1
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.status[{#MXIP}])="POLICY/ERROR" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
-              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} DNSBL policy/error'
+              name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} DNSBL policy/error: {ITEM.LASTVALUE2}'
               priority: WARNING
               description: 'DNSBL provider blocks queries: {ITEM.LASTVALUE2}. Reason: Rate limit or open resolver policy.'
               manual_close: 'YES'
@@ -1750,7 +1750,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.35
+          value: 0.1.36
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

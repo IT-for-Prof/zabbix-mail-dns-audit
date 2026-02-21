@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.36] - 2026-02-22
+
+### Fixed
+- DNSBL check failed and DNSBL policy/error trigger names now include `{ITEM.LASTVALUE2}` showing the exact DNSBL response text
+- Added 6 missing template macros: `{$CHECK_BIMI}`, `{$CHECK_DNSSEC}`, `{$CHECK_MTA_STS}`, `{$CHECK_TLS_RPT}`, `{$MAIL_CLIENT_AUTOCONFIG_CHECK}`, `{$SPF_CHECK_MX_COVERAGE}` — without these the skip macros never worked (always evaluated as empty string)
+- Restored error dependency (`mail.dns.error`) to 15 triggers lost during previous import with `deleteMissing: true`
+- Fixed `{$TEMPLATE_VERSION}` macro value in Zabbix (was stuck at 0.1.32, causing false version mismatch alerts)
+
 ## [0.1.35] - 2026-02-22
 
 ### Added
