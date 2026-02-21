@@ -1126,6 +1126,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: 6f87b844e99149879829c47b289b8738
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.lookup_estimate)>{$SPF_MAX_LOOKUPS}'
+              name: '{HOST.HOST}: SPF lookup count exceeds limit ({ITEM.LASTVALUE} > {$SPF_MAX_LOOKUPS})'
+              priority: AVERAGE
+              description: 'SPF record requires more DNS lookups than allowed by RFC 7208 (max {$SPF_MAX_LOOKUPS}). Receivers will return permerror, which most treat as SPF fail. Simplify SPF by reducing include: chains or using ip4:/ip6: mechanisms directly.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 0fd793c022a041f49b6a4c7f4a2dad6f
           name: 'SPF multiple records'
           type: DEPENDENT
