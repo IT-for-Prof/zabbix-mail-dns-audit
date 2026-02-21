@@ -1,6 +1,27 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.33] - 2026-02-22
+
+### Added
+- Trigger: MX count = 0 (HIGH) — domain cannot receive mail
+- Trigger: SPF lookup estimate exceeds RFC 7208 limit of 10 (AVERAGE)
+- Trigger: Multiple SPF TXT records detected — RFC violation (AVERAGE)
+- Trigger: SPF record changed — hash-based change detection (WARNING)
+- Trigger: MX records changed — hash-based change detection (WARNING)
+- Trigger: DKIM record changed — hash-based change detection (WARNING)
+- Trigger: DMARC rua= missing — no aggregate reports configured (WARNING)
+- Trigger: DNSBL check failure — query timeout or error (WARNING)
+- Macro: {$MAIL_CLIENT_AUTOCONFIG_CHECK} — set to 0 to skip autoconfig/autodiscover alerts on servers without mail client autoconfiguration
+
+### Fixed
+- Added mail.dns.error dependency to all triggers that lacked it (DKIM, DMARC, MTA-STS, TLS-RPT, BIMI, DNSSEC, NS, PTR, SPF) — prevents false alert spam on script errors
+- NS mismatch trigger now attached to mail.ns.serial_mismatch.count item — {ITEM.LASTVALUE} now shows actual mismatch count instead of 0
+- DMARC policy triggers now require mail.dmarc.present=1 — prevents false positive when DMARC record absent
+- mail.dmarc.rua item now has error_handler — prevents unsupported state when DMARC absent
+- Script version mismatch trigger now suppressed when script errors
+- Added HIGH nodata trigger (no data for 3h) to detect when script stops running
+
 ## [0.1.32] - 2026-02-20
 
 ### Added
