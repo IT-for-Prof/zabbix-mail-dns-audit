@@ -193,6 +193,8 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.dmarc.rua
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
           master_item:
             key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
           tags:
