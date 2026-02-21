@@ -535,6 +535,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: bf34ff393e7a45048c9c94a2d8956bd5
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnsbl.check_failed.count)>0'
+              name: '{HOST.HOST}: DNSBL check failed for {ITEM.LASTVALUE} IP(s)'
+              priority: WARNING
+              description: 'One or more DNSBL zone queries failed (timeout or error). DNSBL status is unknown for affected IPs. Check DNS resolver connectivity to DNSBL zones, or adjust {$DNSBL_ZONES} to remove unreachable zones.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 7f6e5d4c3b2a4f1e8d0c9b8a7b6c5d4e
           name: 'DNSBL Health Status'
           type: DEPENDENT
