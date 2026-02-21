@@ -43,6 +43,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: a48aec8440bf4c9ea15aa75a7fd1de4e
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.hash)<>last(/Template Mail DNS Audit Zabbix/mail.dkim.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.hash,#2))>0'
+              name: '{HOST.HOST}: DKIM record changed'
+              priority: WARNING
+              description: 'DKIM public key records have changed since the last check. Verify this change was intentional — DKIM key rotation is normal, but unexpected changes may indicate DNS hijacking.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 5c65f9a9451a499b974c2303ecc84a76
           name: 'DKIM present'
           type: DEPENDENT
@@ -716,6 +731,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: 747e6a5a4dd74f73b946e572d776bbf7
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.hash)<>last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2))>0'
+              name: '{HOST.HOST}: MX records changed'
+              priority: WARNING
+              description: 'MX records have changed since the last check. Verify this change was intentional. MX changes affect mail routing for the entire domain.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 5f2a484eee7342a7bf440c60fcebca01
           name: 'Unresolved MX targets'
           type: DEPENDENT
@@ -1067,6 +1097,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: f6ecb51d8e564276b16b316b00ede11d
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.hash)<>last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2))>0'
+              name: '{HOST.HOST}: SPF record changed'
+              priority: WARNING
+              description: 'The SPF TXT record has changed since the last check. Verify this change was intentional. Unexpected SPF changes may indicate unauthorized modification or DNS hijacking.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 1617b13c04fe466ea123ed46b886d0c8
           name: 'SPF has ptr'
           type: DEPENDENT
