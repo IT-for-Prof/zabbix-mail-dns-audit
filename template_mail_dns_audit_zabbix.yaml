@@ -144,7 +144,7 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: f6e7af347b614fdd8c919123d4444444
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none"'
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none"'
               name: 'DMARC policy is none for {HOST.HOST}'
               priority: WARNING
               description: 'DMARC policy is set to p=none. Recommended: upgrade to p=quarantine or p=reject for better protection.'
@@ -154,7 +154,7 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
             - uuid: fe7655707cb74c8cbee9b1c8acafdbc4
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none" and (last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="quarantine" or last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="reject")'
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none" and (last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="quarantine" or last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="reject")'
               name: 'DMARC policy downgraded to none for {HOST.HOST} (was {ITEM.PREVVALUE})'
               priority: HIGH
               description: 'DMARC policy was downgraded from {ITEM.PREVVALUE} to none. This is a security regression — messages will no longer be quarantined or rejected. Restore p=quarantine or p=reject immediately.'
