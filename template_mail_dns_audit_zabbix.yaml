@@ -1159,6 +1159,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: 73542e364c7741afa4d5ef401a47e970
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.multiple)=1'
+              name: '{HOST.HOST}: Multiple SPF TXT records detected'
+              priority: AVERAGE
+              description: 'Multiple SPF TXT records found for this domain. RFC 7208 requires exactly one SPF record — receivers must treat multiple records as permerror. Remove the duplicate and consolidate all mechanisms into a single record.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 281d2d3f02d14b8fb48cc43c75d0e9c4
           name: 'SPF MX hosts covered'
           type: DEPENDENT
