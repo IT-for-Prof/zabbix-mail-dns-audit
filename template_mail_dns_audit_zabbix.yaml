@@ -407,6 +407,10 @@ zabbix_export:
               name: 'Script version mismatch on {HOST.HOST} (running {ITEM.VALUE}, expected {$TEMPLATE_VERSION})'
               priority: WARNING
               description: 'The mail.dns.audit script version does not match the template version. Update the script on the Zabbix server or proxy handling this host.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
               tags:
                 - tag: Application
                   value: 'Mail DNS'
