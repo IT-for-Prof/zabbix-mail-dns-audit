@@ -798,21 +798,6 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
-          triggers:
-            - uuid: 1c924f590c7d4f8388725fc7b9999999
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ns.consistent)=0'
-              name: '{HOST.HOST}: DNS authoritative NS out of sync (mismatch={ITEM.LASTVALUE})'
-              priority: WARNING
-              description: 'Authoritative nameservers have inconsistent SOA serial numbers. Zone synchronization issue detected.'
-              dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
-                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
-                  recovery_expression: ''
-              tags:
-                - tag: Application
-                  value: 'Mail DNS'
-                - tag: component
-                  value: mail-dns
         - uuid: 9be53db87a2e40b381d50d3de8888888
           name: 'NS serial mismatch count'
           type: DEPENDENT
@@ -836,6 +821,21 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: 1c924f590c7d4f8388725fc7b9999999
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ns.serial_mismatch.count)>0'
+              name: '{HOST.HOST}: DNS authoritative NS out of sync (mismatch={ITEM.LASTVALUE})'
+              priority: AVERAGE
+              description: 'Authoritative name servers for this domain return inconsistent SOA serial numbers. This means DNS changes may not have propagated to all servers, or a secondary NS is stale.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 86f917b1ebea4a278373e0d96e6e0579
           name: 'PTR generic count'
           type: DEPENDENT
