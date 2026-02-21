@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.34] - 2026-02-22
+
+### Fixed
+- DMARC rua= trigger now correctly fires when rua is JSON null (value "null") — previously length()=0 check missed null values
+- SPF mx_covered now detects a:hostname mechanisms that directly name an MX host — prevents false-positive "MX not authorized in SPF" alert when a:mail.example.com is used instead of mx mechanism
+- Script VERSION bumped to match template version (was left at 0.1.32 in 0.1.33 release)
+
 ## [0.1.33] - 2026-02-22
 
 ### Added
