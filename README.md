@@ -52,36 +52,32 @@ Zabbix Mail DNS Audit — интегрированное решение для �
 
 Начиная с Debian 12/Ubuntu 23.10, система защищает глобальный Python от модификации через pip. Используйте один из способов:
 
-**Способ A: виртуальное окружение (рекомендуется)**
+**Способ A: виртуальное окружение**
 
 ```bash
 apt update
 apt install -y python3-full python3-venv
 
 mkdir -p /opt/zabbix-dns-monitoring
-cd /opt/zabbix-dns-monitoring
-
-python3 -m venv .venv
-. .venv/bin/activate
-
-pip install -U pip
-pip install dnspython
+python3 -m venv /opt/zabbix-dns-monitoring/.venv
+/opt/zabbix-dns-monitoring/.venv/bin/pip install -U pip dnspython
 ```
 
-Дальнейший запуск скрипта:
+> **⚠️ Важно для Zabbix:** Шебанг скрипта — `#!/usr/bin/python3` (системный Python). Zabbix запускает внешний скрипт напрямую через шебанг — виртуальное окружение **не активируется**. После копирования скрипта в `externalscripts/` обновите шебанг:
+>
+> ```bash
+> sed -i '1s|.*|#!/opt/zabbix-dns-monitoring/.venv/bin/python3|' /usr/lib/zabbix/externalscripts/mail.dns.audit
+> ```
+>
+> Или используйте **Способ B** (`python3-dnspython` через apt) — проще и не требует изменения шебанга.
+
+Ручное тестирование:
 
 ```bash
-. /opt/zabbix-dns-monitoring/.venv/bin/activate
-python mail.dns.audit example.com
+/opt/zabbix-dns-monitoring/.venv/bin/python3 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
 ```
 
-Или с полным путём:
-
-```bash
-/opt/zabbix-dns-monitoring/.venv/bin/python mail.dns.audit example.com
-```
-
-**Способ B: системный пакет (если доступен)**
+**Способ B: системный пакет (рекомендуется для Zabbix)**
 
 ```bash
 apt update
@@ -118,8 +114,7 @@ pip3 install dnspython
 #### Alpine (контейнер)
 
 ```bash
-apk add --no-cache python3 py3-pip
-pip3 install dnspython
+apk add --no-cache python3 py3-dnspython
 ```
 
 ### Шаг 2: Развёртывание скрипта
@@ -170,6 +165,8 @@ ls -l /usr/lib/zabbix/externalscripts/mail.dns.audit
 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com 8.8.8.8 3
 ```
 
+> **Zabbix Proxy:** Если хосты мониторятся через **Zabbix Proxy**, разверните скрипт и Python-зависимости на **прокси-сервере**, а не на Zabbix Server. Внешние скрипты выполняются на той машине (сервер или прокси), которая мониторит хост. Шаги установки одинаковы для каждого прокси.
+
 ### Шаг 3: Загрузка шаблона и импорт
 
 **Вариант A: Git (уже скачан)**
@@ -211,7 +208,7 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
    - Host name: `example.com` (или имя домена)
    - Visible name: видимое имя
    - Groups: выберите группу
-   - Interfaces: IP сервера Zabbix (localhost)
+   - Interfaces: `127.0.0.1` (заглушка — внешние скрипты не используют интерфейс хоста)
 4. Перейдите на вкладку Templates
 5. Добавьте `Template Mail DNS Audit Zabbix`
 6. Create
@@ -354,18 +351,16 @@ python3 -m venv /opt/dns-venv
 pip install dnspython
 ```
 
-Запуск скрипта Zabbix с venv:
+Обновите шебанг развёрнутого скрипта, чтобы он использовал Python из venv:
 
 ```bash
-/opt/dns-venv/bin/python /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
+sed -i '1s|.*|#!/opt/dns-venv/bin/python3|' /usr/lib/zabbix/externalscripts/mail.dns.audit
 ```
 
-Или добавьте в конфиг Zabbix (если запуск через внешний скрипт):
+Или проверьте вручную:
 
 ```bash
-#!/bin/bash
-. /opt/dns-venv/bin/activate
-/usr/lib/zabbix/externalscripts/mail.dns.audit "$@"
+/opt/dns-venv/bin/python3 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
 ```
 
 **Альтернатива: системный пакет (если доступен)**
@@ -398,6 +393,28 @@ docker exec zabbix-server apk add --no-cache py3-dnspython
 1. Установите локальный резолвер (Unbound/Bind) на локальной машине
 2. Установите макрос: `{$DNS_RESOLVER} = "127.0.0.1"`
 
+### Zabbix Proxy: скрипт не работает
+
+Внешние скрипты выполняются на **прокси**, который мониторит хост, а не на Zabbix Server. Если элемент показывает "not supported" на хосте под прокси:
+
+1. Разверните скрипт на каждом прокси-сервере:
+```bash
+# Выполнить на машине прокси
+wget -O /usr/lib/zabbix/externalscripts/mail.dns.audit \
+  https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main/externalscripts/mail.dns.audit
+chmod 755 /usr/lib/zabbix/externalscripts/mail.dns.audit
+chown zabbix:zabbix /usr/lib/zabbix/externalscripts/mail.dns.audit
+```
+
+2. Установите Python и dnspython на прокси (те же шаги, что и для сервера выше).
+
+3. Убедитесь, что путь `ExternalScripts` в `zabbix_proxy.conf` совпадает с `/usr/lib/zabbix/externalscripts/`.
+
+4. Проверьте от имени пользователя zabbix на машине прокси:
+```bash
+su - zabbix -c "/usr/lib/zabbix/externalscripts/mail.dns.audit example.com"
+```
+
 ### Скрипт не выполняется из Zabbix
 
 ```bash
@@ -417,9 +434,9 @@ su - zabbix -c "/usr/lib/zabbix/externalscripts/mail.dns.audit example.com"
 ### Поток данных
 
 ```
-Zabbix Server
+Zabbix Server (или Proxy, если хост мониторится через прокси)
     ↓
-mail.dns.audit (Master Item)
+mail.dns.audit (Master Item — External Check)
     ↓
 Python скрипт (externalscripts/mail.dns.audit)
     ├→ Получить MX записи
@@ -440,7 +457,7 @@ Triggers & Alerts
 
 ### Кэширование
 
-- DNSBL результаты хранятся в `/tmp/mail_dns_audit_cache.json`
+- DNSBL результаты хранятся в `/tmp/mail_dns_audit_cache.json` на машине, выполняющей скрипт (Zabbix Server или Proxy)
 - TTL управляется макросом `{$DNSBL_CACHE_TTL_SEC}` (по умолчанию 1200 сек)
 - Кэш ускоряет повторные проверки и снижает нагрузку
 
