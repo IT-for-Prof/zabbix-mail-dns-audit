@@ -619,7 +619,7 @@ zabbix_export:
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dns.query_time_ms)>{$DNS_SLOW_MS}'
               name: 'DNS query slow ({ITEM.LASTVALUE}ms > {$DNS_SLOW_MS}ms) for {HOST.HOST}'
               priority: WARNING
-              description: 'DNS audit script exceeded threshold ({$DNS_SLOW_MS}ms). Query time: {ITEM.LASTVALUE}ms. Check DNS resolver performance or network latency.'
+              description: 'DNS audit script exceeded query time threshold. Check DNS resolver performance or network latency.'
               tags:
                 - tag: Application
                   value: 'Mail DNS'
