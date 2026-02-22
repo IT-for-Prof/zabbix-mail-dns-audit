@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.38] - 2026-02-22
+
+### Added
+- Trigger: DMARC rua= not configured (INFO, opt-in via `{$CHECK_DMARC_RUA}=1`, default off) — fires when DMARC present but rua= absent; rua= is optional per RFC 7489 so check is disabled by default
+- Trigger: DMARC rua= malformed (WARNING, always on) — fires when rua= is present but does not start with `mailto:` scheme; catches configuration mistakes
+- Macro: `{$CHECK_DMARC_RUA}` (default 0) — set to 1 to enable the rua= absent alert
+
 ## [0.1.37] - 2026-02-22
 
 ### Removed

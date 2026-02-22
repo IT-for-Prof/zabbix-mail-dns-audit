@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.37
+        Version: 0.1.38
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -231,6 +231,35 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
+          triggers:
+            - uuid: ed9eed8da1b949a5a59565cb4325528b
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and (length(last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua))=0 or last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua)="null") and {$CHECK_DMARC_RUA}=1'
+              name: '{HOST.HOST}: DMARC rua= not configured (no aggregate reports)'
+              priority: INFO
+              description: 'DMARC record is present but has no rua= tag. Without rua=, you receive no aggregate reports about SPF/DKIM authentication results for your domain. To suppress, set {$CHECK_DMARC_RUA}=0 on this host (default). To mandate reporting, set {$CHECK_DMARC_RUA}=1 and add rua=mailto:dmarc@yourdomain.com or use a DMARC reporting service.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+            - uuid: b0319c87bc424da4b9a0210b7067a5d7
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and length(last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua))>0 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua)<>"null" and find(/Template Mail DNS Audit Zabbix/mail.dmarc.rua,#1,"iregexp","^mailto:")=0'
+              name: '{HOST.HOST}: DMARC rua= malformed — value does not use mailto: scheme'
+              priority: WARNING
+              description: 'DMARC rua= is set but does not start with mailto: (e.g. "dmarc@example.com" instead of "mailto:dmarc@example.com"). DMARC aggregate report URIs must use the mailto: scheme per RFC 7489. Fix the DMARC TXT record.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
         - uuid: 9e3b1c2a5d4f4e7a8b9c1d2e3f4a5b6c
           name: 'DMARC Security Score'
           type: DEPENDENT
@@ -1681,6 +1710,9 @@ zabbix_export:
         - macro: '{$CHECK_BIMI}'
           value: '1'
           description: 'Set to 0 on hosts without BIMI to suppress BIMI record missing alerts.'
+        - macro: '{$CHECK_DMARC_RUA}'
+          value: '0'
+          description: 'Set to 1 to alert when DMARC record is present but rua= is not configured. Default 0 (off) — rua= is optional per RFC 7489.'
         - macro: '{$CHECK_DNSSEC}'
           value: '1'
           description: 'Set to 0 on hosts without DNSSEC to suppress DNSSEC AD flag and DS record alerts.'
@@ -1735,7 +1767,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.37
+          value: 0.1.38
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
