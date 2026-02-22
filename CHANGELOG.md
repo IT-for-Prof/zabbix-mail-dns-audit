@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.37] - 2026-02-22
+
+### Removed
+- Trigger: DMARC rua= missing — removed per RFC 7489: rua= is optional; absence is valid and should not alert
+
 ## [0.1.36] - 2026-02-22
 
 ### Fixed

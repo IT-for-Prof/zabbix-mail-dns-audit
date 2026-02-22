@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.36
+        Version: 0.1.37
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -231,21 +231,6 @@ zabbix_export:
           tags:
             - tag: Application
               value: 'Mail DNS'
-          triggers:
-            - uuid: 7c1fb5d98fc44ff392efa501138fbd44
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and (length(last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua))=0 or last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua)="null")'
-              name: '{HOST.HOST}: DMARC rua= missing (no aggregate reports)'
-              priority: WARNING
-              description: 'DMARC record exists but has no rua= (aggregate report URI). Without rua, you receive no reports about SPF/DKIM pass/fail rates for your domain. Add rua=mailto:dmarc@yourdomain.com or use a DMARC reporting service.'
-              dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
-                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
-                  recovery_expression: ''
-              tags:
-                - tag: Application
-                  value: 'Mail DNS'
-                - tag: component
-                  value: mail-dns
         - uuid: 9e3b1c2a5d4f4e7a8b9c1d2e3f4a5b6c
           name: 'DMARC Security Score'
           type: DEPENDENT
@@ -1750,7 +1735,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.36
+          value: 0.1.37
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
