@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.40
+        Version: 0.1.41
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -50,7 +50,7 @@ zabbix_export:
               priority: WARNING
               description: 'DKIM public key records have changed since the last check. Verify this change was intentional — DKIM key rotation is normal, but unexpected changes may indicate DNS hijacking.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -83,7 +83,7 @@ zabbix_export:
               priority: HIGH
               description: 'DKIM TXT record not found for selectors specified in {$DKIM_SELECTORS}. Check DNS configuration and selector names.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -115,7 +115,7 @@ zabbix_export:
               priority: WARNING
               description: 'One or more DKIM selectors uses an RSA key smaller than 2048 bits. Keys below 2048 bits are considered weak and may be vulnerable to factoring attacks. Fix: generate a new 2048-bit key: openssl genrsa -out dkim_private.key 2048. Publish the new public key in the _domainkey TXT record in DNS and configure your mail server to sign with the new key.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
                 - name: '{HOST.HOST}: DKIM key critically weak ({ITEM.LASTVALUE} bits ≤ 1024, immediate rotation required)'
@@ -132,7 +132,7 @@ zabbix_export:
               priority: HIGH
               description: 'A DKIM selector has an RSA key of 1024 bits or less. Such keys can be factored in hours using modern cloud computing. Rotate immediately: generate a new 2048-bit key: openssl genrsa -out dkim_private.key 2048. Publish the new public key in the _domainkey TXT record and update your mail server signing configuration before removing the old key.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -203,7 +203,7 @@ zabbix_export:
               priority: INFO
               description: 'DMARC policy is applied to only {ITEM.LASTVALUE}% of messages. Recommended: set pct=100 for full protection.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -238,7 +238,7 @@ zabbix_export:
               priority: WARNING
               description: 'DMARC policy is set to p=none. Recommended: upgrade to p=quarantine or p=reject for better protection.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -252,7 +252,7 @@ zabbix_export:
               priority: HIGH
               description: 'DMARC policy was downgraded from {ITEM.PREVVALUE} to none. This is a security regression — messages will no longer be quarantined or rejected. Restore p=quarantine or p=reject immediately.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -304,7 +304,7 @@ zabbix_export:
               priority: INFO
               description: 'DMARC record is present but has no rua= tag. Without rua=, you receive no aggregate reports about SPF/DKIM authentication results for your domain. To suppress, set {$CHECK_DMARC_RUA}=0 on this host (default). To mandate reporting, set {$CHECK_DMARC_RUA}=1 and add rua=mailto:dmarc@yourdomain.com or use a DMARC reporting service.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -314,11 +314,11 @@ zabbix_export:
                   value: mail-dns
             - uuid: b0319c87bc424da4b9a0210b7067a5d7
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and length(last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua))>0 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.rua)<>"null" and find(/Template Mail DNS Audit Zabbix/mail.dmarc.rua,#1,"iregexp","^mailto:")=0'
-              name: '{HOST.HOST}: DMARC rua= malformed — value does not use mailto: scheme'
+              name: '{HOST.HOST}: DMARC rua= malformed ({ITEM.LASTVALUE2}) — must use mailto: scheme'
               priority: WARNING
               description: 'DMARC rua= is set but does not start with mailto: (e.g. "dmarc@example.com" instead of "mailto:dmarc@example.com"). DMARC aggregate report URIs must use the mailto: scheme per RFC 7489. Fix the DMARC TXT record.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -441,7 +441,7 @@ zabbix_export:
               priority: INFO
               description: 'MTA-STS TXT record (_mta-sts.{HOST.HOST}) not found. This enables secure TLS enforcement for inbound mail.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -476,7 +476,7 @@ zabbix_export:
               priority: INFO
               description: 'TLS-RPT TXT record (_smtp._tls.{HOST.HOST}) not found. This enables reporting of TLS connection failures.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -511,7 +511,7 @@ zabbix_export:
               priority: INFO
               description: 'BIMI TXT record (default._bimi.{HOST.HOST}) not found. This enables brand indicators in email clients.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -556,7 +556,7 @@ zabbix_export:
           triggers:
             - uuid: 73c8be1fb2e24f119cb77c53fd9ffbf2
               expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
-              name: 'DNS audit script error on {HOST.HOST}'
+              name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
               priority: HIGH
               description: 'The mail DNS audit script returned an error message. Check Zabbix server connectivity to the external script, DNS resolver availability, and script configuration.'
               tags:
@@ -590,7 +590,7 @@ zabbix_export:
               priority: WARNING
               description: 'The mail.dns.audit script version does not match the template version. Update the script on the Zabbix server or proxy handling this host.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -617,7 +617,7 @@ zabbix_export:
           triggers:
             - uuid: 6dce0af48c254b3f84a95e15f6666666
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dns.query_time_ms)>{$DNS_SLOW_MS}'
-              name: 'DNS query slow (> {$DNS_SLOW_MS}ms) for {HOST.HOST}'
+              name: 'DNS query slow ({ITEM.LASTVALUE}ms > {$DNS_SLOW_MS}ms) for {HOST.HOST}'
               priority: WARNING
               description: 'DNS audit script exceeded threshold ({$DNS_SLOW_MS}ms). Query time: {ITEM.LASTVALUE}ms. Check DNS resolver performance or network latency.'
               tags:
@@ -666,7 +666,7 @@ zabbix_export:
               priority: WARNING
               description: 'One or more DNSBL zone queries failed with a technical error (timeout, SERVFAIL, empty response). DNSBL status is unknown for the affected IP/zone pairs. See problem name for details. Common causes: (1) Public resolver blocked by DNSBL — switch to a local Unbound resolver and set {$DNS_RESOLVER}=127.0.0.1; (2) DNSBL zone unreachable — remove it from {$DNSBL_ZONES}.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -781,7 +781,7 @@ zabbix_export:
               priority: INFO
               description: 'DNSSEC AD (Authenticated Data) flag not set. Enable DNSSEC validation on your DNS resolver.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -813,7 +813,7 @@ zabbix_export:
               priority: INFO
               description: 'DS (Delegation Signer) record not found. Domain is not DNSSEC-signed. Consider enabling DNSSEC.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -860,7 +860,7 @@ zabbix_export:
               priority: HIGH
               description: 'No MX records were found for this domain. The domain cannot receive email. Verify MX records exist and DNS is resolving correctly.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -892,7 +892,7 @@ zabbix_export:
               priority: WARNING
               description: 'One or more MX hostnames resolve to a CNAME record, which is prohibited by RFC 5321 §5. MX targets must have A/AAAA records directly — not be aliases. Some receiving MTAs reject mail to/from such domains. Fix: update the MX DNS record to point directly to the hostname that holds an A record (the CNAME target). Remove the CNAME alias.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -924,7 +924,7 @@ zabbix_export:
               priority: WARNING
               description: 'MX records have changed since the last check. Verify this change was intentional. MX changes affect mail routing for the entire domain.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1014,7 +1014,7 @@ zabbix_export:
               priority: AVERAGE
               description: 'Authoritative name servers for this domain return inconsistent SOA serial numbers. This means DNS changes may not have propagated to all servers, or a secondary NS is stale.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1044,7 +1044,7 @@ zabbix_export:
               priority: INFO
               description: '{ITEM.LASTVALUE1} MX IP(s) have generic or dynamic PTR hostnames. This may affect email deliverability reputation.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1074,7 +1074,7 @@ zabbix_export:
               priority: HIGH
               description: '{ITEM.LASTVALUE1} MX IP(s) have no PTR record. Add reverse DNS records to improve email deliverability.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1104,7 +1104,7 @@ zabbix_export:
               priority: AVERAGE
               description: '{ITEM.LASTVALUE1} MX IP(s) have PTR records that do not resolve back to the same IP. Fix PTR/A record mismatch.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1208,7 +1208,7 @@ zabbix_export:
               priority: HIGH
               description: 'SPF record contains +all mechanism, which allows ANY server to send mail for this domain. Recommended: use -all (fail) instead.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1243,7 +1243,7 @@ zabbix_export:
               priority: INFO
               description: 'SPF record uses ?all (neutral) which provides no SPF fail action. Recommended: use -all (fail) or ~all (softfail).'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1290,7 +1290,7 @@ zabbix_export:
               priority: WARNING
               description: 'The SPF TXT record has changed since the last check. Verify this change was intentional. Unexpected SPF changes may indicate unauthorized modification or DNS hijacking.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1364,7 +1364,7 @@ zabbix_export:
               priority: AVERAGE
               description: 'SPF record requires more DNS lookups than allowed by RFC 7208 (max {$SPF_MAX_LOOKUPS}). Receivers will return permerror, which most treat as SPF fail. Simplify SPF by reducing include: chains or using ip4:/ip6: mechanisms directly.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1397,7 +1397,7 @@ zabbix_export:
               priority: AVERAGE
               description: 'Multiple SPF TXT records found for this domain. RFC 7208 requires exactly one SPF record — receivers must treat multiple records as permerror. Remove the duplicate and consolidate all mechanisms into a single record.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1432,7 +1432,7 @@ zabbix_export:
               priority: AVERAGE
               description: 'MX records exist but MX hosts are not covered as authorized senders in the SPF record. If your MX hosts send outbound mail (common for standalone servers), add the mx mechanism or an include: that authorizes them. Set {$SPF_CHECK_MX_COVERAGE}=0 on this host to suppress if MX is intentionally receive-only.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1467,7 +1467,7 @@ zabbix_export:
               priority: INFO
               description: 'autoconfig.{HOST.HOST} A/CNAME record not found. Thunderbird and other Mozilla-compatible mail clients will not be able to auto-discover mail server settings.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1521,7 +1521,7 @@ zabbix_export:
               priority: INFO
               description: 'autodiscover.{HOST.HOST} A/CNAME record not found. Outlook and Exchange-compatible clients will not be able to auto-discover mail server settings.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1575,7 +1575,7 @@ zabbix_export:
               priority: WARNING
               description: 'None of the standard mail client autoconfiguration DNS mechanisms are present (autoconfig A/CNAME, autodiscover A/CNAME, _autodiscover._tcp SRV). Mail clients will fall back to manual configuration or ISP database lookup.'
               dependencies:
-                - name: 'DNS audit script error on {HOST.HOST}'
+                - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
                   recovery_expression: ''
               tags:
@@ -1835,7 +1835,7 @@ zabbix_export:
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed[{#MXIP}])=1 and last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.zone[{#MXIP}])<>"*UNKNOWN*"'
               name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} listed in DNSBL {ITEM.LASTVALUE2}'
               priority: HIGH
-              description: 'MX IP address is found in blackhole list. Reason: {ITEM.LASTVALUE3}. Contact DNSBL operator or review mail server configuration.'
+              description: 'MX IP address is found in blackhole list. Reason: {?last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}])}. Contact DNSBL operator or review mail server configuration.'
               manual_close: 'YES'
               tags:
                 - tag: Application
@@ -1909,7 +1909,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.40
+          value: 0.1.41
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

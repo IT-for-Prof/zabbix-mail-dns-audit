@@ -1,6 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.41] - 2026-02-22
+
+### Changed
+- Trigger: "DNS audit script error" name now includes `{ITEM.LASTVALUE}` — shows the actual error message directly in the problem name; all 32 dependency references updated accordingly
+- Trigger: "DMARC rua= malformed" name now includes `{ITEM.LASTVALUE2}` — shows the actual malformed rua= value
+- Trigger: "DNS query slow" name now shows actual query time: `({ITEM.LASTVALUE}ms > {$DNS_SLOW_MS}ms)`
+- Trigger prototype: "MX IP listed in DNSBL" description fixed — was using `{ITEM.LASTVALUE3}` (non-existent, 3rd item) for the reason; replaced with `{?last(...mail.mx.ip.listed.txt[{#MXIP}])}`
+- Script version bumped to 0.1.41 to stay in sync with template
+
 ## [0.1.40] - 2026-02-22
 
 ### Changed
