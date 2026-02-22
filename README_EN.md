@@ -22,7 +22,9 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 - ✅ MX record checking and TTL monitoring
 - ✅ SPF analysis (RFC 7208), lookup counting
 - ✅ DMARC policy monitoring
-- ✅ DKIM key tracking
+- ✅ DKIM key tracking and RSA key size validation (alerts on keys < 2048 bits or ≤ 1024 bits)
+- ✅ DMARC alignment mode detection (adkim/aspf: relaxed or strict)
+- ✅ MX → CNAME violation detection (RFC 5321 §5 prohibits CNAME as MX target)
 - ✅ DNSBL checking (statuses: LISTED, NOT LISTED, POLICY/ERROR, CHECK FAILED)
 - ✅ DNSSEC validation (DS records, AD flags)
 - ✅ PTR/FCrDNS checks for MX (missing PTR, FCrDNS mismatch, generic PTR)
