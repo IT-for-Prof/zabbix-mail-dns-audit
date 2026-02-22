@@ -1,6 +1,21 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.39] - 2026-02-22
+
+### Added
+- Item: `mail.dkim.min_key_bits` — minimum RSA key size (bits) across all monitored DKIM selectors; 0 if no DKIM found or key unparseable
+- Item: `mail.dkim.weak_key_count` — count of DKIM selectors with RSA key below 2048 bits
+- Trigger: DKIM key too small (WARNING) — fires when min_key_bits > 0 and < 2048 and DKIM present; suppressed when HIGH trigger is active; depends on mail.dns.error
+- Trigger: DKIM key critically weak (HIGH) — fires when min_key_bits > 0 and ≤ 1024 and DKIM present; depends on mail.dns.error
+- Item: `mail.dmarc.adkim` — DKIM alignment mode from DMARC record (r=relaxed/default, s=strict); informational, no trigger (relaxed is RFC 7489 default)
+- Item: `mail.dmarc.aspf` — SPF alignment mode from DMARC record (r=relaxed/default, s=strict); informational, no trigger
+- Item: `mail.mx.cname_violation.count` — count of MX targets that resolve to a CNAME (RFC 5321 §5 violation)
+- Trigger: MX target is a CNAME (WARNING) — fires when mx.cname_violation.count > 0; depends on mail.dns.error
+
+### Changed
+- Script and template version bumped to 0.1.39
+
 ## [0.1.38] - 2026-02-22
 
 ### Added

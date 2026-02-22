@@ -6,6 +6,7 @@ Returns one-line JSON with MX, SPF, DNSBL, DNSSEC and meta fields.
 """
 
 import argparse
+import base64
 import hashlib
 import ipaddress
 import json
@@ -21,7 +22,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.38"
+VERSION = "0.1.39"
 
 DEFAULT_RESOLVER = "1.1.1.1"
 DEFAULT_TIMEOUT = 3.0
@@ -608,16 +609,62 @@ def build_lld(mx_data: List[Dict], ip_data: List[Dict], zones: List[str]) -> Dic
 
 def parse_dmarc(records: List[str]) -> Dict:
     if not records:
-        return {"present": False, "raw": None, "p": None, "sp": None, "rua": None, "pct": None}
+        return {"present": False, "raw": None, "p": None, "sp": None, "rua": None, "pct": None, "adkim": None, "aspf": None}
     raw = records[0]
-    result = {"present": True, "raw": raw, "p": None, "sp": None, "rua": None, "pct": None}
+    result = {"present": True, "raw": raw, "p": None, "sp": None, "rua": None, "pct": None, "adkim": None, "aspf": None}
     parts = [p.strip() for p in raw.split(";") if p.strip()]
     for part in parts:
         if "=" in part:
             key, val = [v.strip().lower() for v in part.split("=", 1)]
-            if key in ["p", "sp", "rua", "pct"]:
+            if key in ["p", "sp", "rua", "pct", "adkim", "aspf"]:
                 result[key] = val
     return result
+
+
+def parse_dkim_records(dkim_records: List[str]) -> Dict:
+    """Parse DKIM TXT records and estimate RSA key size from the p= field."""
+    records = []
+    for entry in dkim_records:
+        selector, raw = entry.split(":", 1)
+        tags: Dict[str, str] = {}
+        for part in raw.split(";"):
+            part = part.strip()
+            if "=" in part:
+                k, v = part.split("=", 1)
+                tags[k.strip().lower()] = v.strip()
+
+        key_bits = 0
+        k_type = tags.get("k", "rsa")
+        p_val = tags.get("p", "")
+        if p_val:
+            try:
+                der = base64.b64decode(p_val + "==")  # pad for safety
+                # DER-encoded SubjectPublicKeyInfo for RSA-2048 is ~294 bytes.
+                # Heuristic: snap to nearest standard key size.
+                raw_bits = len(der) * 8
+                if raw_bits >= 3000:
+                    key_bits = 4096
+                elif raw_bits >= 1500:
+                    key_bits = 2048
+                elif raw_bits >= 700:
+                    key_bits = 1024
+                elif raw_bits >= 350:
+                    key_bits = 512
+                else:
+                    key_bits = raw_bits
+            except Exception:
+                key_bits = 0
+
+        records.append({
+            "selector": selector,
+            "k": k_type,
+            "key_bits": key_bits,
+            "has_key": bool(p_val),
+        })
+
+    min_bits = min((r["key_bits"] for r in records if r["key_bits"] > 0), default=0)
+    weak_count = sum(1 for r in records if 0 < r["key_bits"] < 2048)
+    return {"records": records, "min_key_bits": min_bits, "weak_key_count": weak_count}
 
 
 def main() -> int:
@@ -792,11 +839,13 @@ def main() -> int:
 
     result = {
         "mx": [],
+        "mx_cname_count": 0,
         "spf": [],
         "spf_analysis": {},
         "snapshots": {},
         "dnssec": {"ds_present": False, "ad_flag": False},
         "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
+        "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0},
         "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
         "bimi": {"present": False, "txt": []},
         "mail_client_config": {
@@ -855,7 +904,13 @@ def main() -> int:
                 for ip in mx["aaaa"]:
                     ip_entries.append({"mx_host": mx["host"], "ip": ip, "proto": "AAAA"})
 
+        # Check for MX → CNAME violations (RFC 5321 §5)
+        for mx in mx_list:
+            cname_recs, _, _ = query_records(resolver, mx["host"], "CNAME")
+            mx["cname"] = cname_recs[0].rstrip(".") if cname_recs else None
+
         result["mx"] = mx_list
+        result["mx_cname_count"] = sum(1 for m in mx_list if m.get("cname"))
 
         txt_records, _, _ = query_records(resolver, domain, "TXT")
         spf_records = [t for t in txt_records if t.lower().startswith("v=spf1")]
@@ -957,6 +1012,7 @@ def main() -> int:
             recs, _, _ = query_records(resolver, f"{sel}._domainkey.{domain}", "TXT")
             for r in recs:
                 dkim_records.append(f"{sel}:{r}")
+        result["dkim"] = parse_dkim_records(dkim_records)
 
         # NS, SOA
         ns_records, _, _ = query_records(resolver, domain, "NS")

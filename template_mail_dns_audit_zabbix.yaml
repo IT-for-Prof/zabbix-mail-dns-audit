@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.38
+        Version: 0.1.39
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         
@@ -91,6 +91,72 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+        - uuid: 2be6a3208d254d62a890ef207b4177f8
+          name: 'DKIM minimum key size'
+          type: DEPENDENT
+          key: mail.dkim.min_key_bits
+          delay: '0'
+          description: 'Minimum RSA key size (bits) across all monitored DKIM selectors. 0 = no DKIM found or key could not be parsed. Values: 512, 1024, 2048, 4096.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dkim.min_key_bits
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 73e69731edd9411197a97e0ce85396e7
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.min_key_bits)>0 and last(/Template Mail DNS Audit Zabbix/mail.dkim.min_key_bits)<2048 and last(/Template Mail DNS Audit Zabbix/mail.dkim.present)=1'
+              name: '{HOST.HOST}: DKIM key too small ({ITEM.LASTVALUE} bits, minimum 2048 required)'
+              priority: WARNING
+              description: 'One or more DKIM selectors uses an RSA key smaller than 2048 bits. Keys below 2048 bits are considered weak and may be vulnerable to factoring attacks. Fix: generate a new 2048-bit key: openssl genrsa -out dkim_private.key 2048. Publish the new public key in the _domainkey TXT record in DNS and configure your mail server to sign with the new key.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+                - name: '{HOST.HOST}: DKIM key critically weak ({ITEM.LASTVALUE} bits ≤ 1024, immediate rotation required)'
+                  expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.min_key_bits)>0 and last(/Template Mail DNS Audit Zabbix/mail.dkim.min_key_bits)<=1024 and last(/Template Mail DNS Audit Zabbix/mail.dkim.present)=1'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+            - uuid: bddbdf7b57ff4ad99ae87b00462e05b9
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.min_key_bits)>0 and last(/Template Mail DNS Audit Zabbix/mail.dkim.min_key_bits)<=1024 and last(/Template Mail DNS Audit Zabbix/mail.dkim.present)=1'
+              name: '{HOST.HOST}: DKIM key critically weak ({ITEM.LASTVALUE} bits ≤ 1024, immediate rotation required)'
+              priority: HIGH
+              description: 'A DKIM selector has an RSA key of 1024 bits or less. Such keys can be factored in hours using modern cloud computing. Rotate immediately: generate a new 2048-bit key: openssl genrsa -out dkim_private.key 2048. Publish the new public key in the _domainkey TXT record and update your mail server signing configuration before removing the old key.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: 051a80f792f9484aa56d816a6965c61b
+          name: 'DKIM weak key count'
+          type: DEPENDENT
+          key: mail.dkim.weak_key_count
+          delay: '0'
+          description: 'Number of monitored DKIM selectors with RSA key size below 2048 bits. See mail.dkim.min_key_bits triggers for alerting.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dkim.weak_key_count
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
         - uuid: d4f97081d844407aac38dafaf393432a
           name: 'DMARC hash'
           type: DEPENDENT
@@ -260,6 +326,50 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+        - uuid: 763f4b6b1ce24cf1b5e75d2d26fde812
+          name: 'DMARC DKIM alignment mode'
+          type: DEPENDENT
+          key: mail.dmarc.adkim
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'DKIM alignment mode (adkim=): "r" = relaxed (default per RFC 7489, subdomains pass), "s" = strict (exact From: domain match required). Absent tag means relaxed.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.adkim
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'r'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value === "null" ? "r" : value;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 773ba922f530488caf6238be3cb55289
+          name: 'DMARC SPF alignment mode'
+          type: DEPENDENT
+          key: mail.dmarc.aspf
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'SPF alignment mode (aspf=): "r" = relaxed (default per RFC 7489, envelope From subdomains pass), "s" = strict (exact envelope From match required). Absent tag means relaxed.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dmarc.aspf
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'r'
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value === "null" ? "r" : value;'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
         - uuid: 9e3b1c2a5d4f4e7a8b9c1d2e3f4a5b6c
           name: 'DMARC Security Score'
           type: DEPENDENT
@@ -749,6 +859,38 @@ zabbix_export:
               name: '{HOST.HOST}: No MX records found'
               priority: HIGH
               description: 'No MX records were found for this domain. The domain cannot receive email. Verify MX records exist and DNS is resolving correctly.'
+              dependencies:
+                - name: 'DNS audit script error on {HOST.HOST}'
+                  expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
+                  recovery_expression: ''
+              tags:
+                - tag: Application
+                  value: 'Mail DNS'
+                - tag: component
+                  value: mail-dns
+        - uuid: f0e6867a3690424ba1e05ca87b053f39
+          name: 'MX CNAME violation count'
+          type: DEPENDENT
+          key: mail.mx.cname_violation.count
+          delay: '0'
+          description: 'Number of MX targets that resolve to a CNAME record. RFC 5321 §5 prohibits MX records from pointing to CNAMEs. Value 0 = no violations.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mx_cname_count
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+          triggers:
+            - uuid: 4b1c7074d766414cb89c8e1f7755f6b8
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.cname_violation.count)>0'
+              name: '{HOST.HOST}: MX target is a CNAME — RFC 5321 violation ({ITEM.LASTVALUE} affected)'
+              priority: WARNING
+              description: 'One or more MX hostnames resolve to a CNAME record, which is prohibited by RFC 5321 §5. MX targets must have A/AAAA records directly — not be aliases. Some receiving MTAs reject mail to/from such domains. Fix: update the MX DNS record to point directly to the hostname that holds an A record (the CNAME target). Remove the CNAME alias.'
               dependencies:
                 - name: 'DNS audit script error on {HOST.HOST}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
@@ -1767,7 +1909,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.38
+          value: 0.1.39
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
