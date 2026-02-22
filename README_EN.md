@@ -246,12 +246,26 @@ All parameters are configured via template macros in Zabbix:
 | `{$DNSBL_MAX_IP}` | `1` | Max IPs for DNSBL |
 | `{$MAX_MX_CHECK}` | `5` | Max MX to check |
 
+### Check Control
+
+Per-host opt-in/opt-out macros. Set at the host level to override the template default.
+
+| Macro | Default | Description |
+|-------|---------|-------------|
+| `{$CHECK_BIMI}` | `1` | Set to `0` to suppress BIMI record missing alert |
+| `{$CHECK_DMARC_RUA}` | `0` | Set to `1` to alert when DMARC is present but `rua=` is absent (opt-in — `rua=` is optional per RFC 7489) |
+| `{$CHECK_DNSSEC}` | `1` | Set to `0` to suppress DNSSEC AD flag and DS record alerts |
+| `{$CHECK_MTA_STS}` | `1` | Set to `0` to suppress MTA-STS record missing alert |
+| `{$CHECK_TLS_RPT}` | `1` | Set to `0` to suppress TLS-RPT record missing alert |
+| `{$MAIL_CLIENT_AUTOCONFIG_CHECK}` | `1` | Set to `0` to suppress autoconfig/autodiscover alerts |
+| `{$SPF_CHECK_MX_COVERAGE}` | `1` | Set to `0` to suppress "MX not covered by SPF" alert |
+
 ### Other
 
 | Macro | Value | Description |
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
-| `{$DKIM_SELECTORS}` | `default` | DKIM selectors |
+| `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
 | `{$TEMPLATE_VERSION}` | `0.1.38` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 

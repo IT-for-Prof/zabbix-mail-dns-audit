@@ -246,12 +246,26 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 | `{$DNSBL_MAX_IP}` | `1` | Макс. IP для DNSBL |
 | `{$MAX_MX_CHECK}` | `5` | Макс. MX для проверки |
 
+### Управление проверками
+
+Макросы для включения/отключения отдельных проверок на уровне хоста. Переопределяют значения шаблона.
+
+| Макрос | По умолчанию | Описание |
+|--------|-------------|---------|
+| `{$CHECK_BIMI}` | `1` | `0` — отключить триггер об отсутствии BIMI |
+| `{$CHECK_DMARC_RUA}` | `0` | `1` — включить триггер, если DMARC есть, но `rua=` не задан (opt-in — `rua=` опционален по RFC 7489) |
+| `{$CHECK_DNSSEC}` | `1` | `0` — отключить триггеры DNSSEC AD flag и DS record |
+| `{$CHECK_MTA_STS}` | `1` | `0` — отключить триггер об отсутствии MTA-STS |
+| `{$CHECK_TLS_RPT}` | `1` | `0` — отключить триггер об отсутствии TLS-RPT |
+| `{$MAIL_CLIENT_AUTOCONFIG_CHECK}` | `1` | `0` — отключить триггеры autoconfig/autodiscover |
+| `{$SPF_CHECK_MX_COVERAGE}` | `1` | `0` — отключить триггер "MX не авторизован в SPF" |
+
 ### Другое
 
 | Макрос | Значение | Описание |
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
-| `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM |
+| `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM (через запятую, без `._domainkey`) |
 | `{$TEMPLATE_VERSION}` | `0.1.38` | Версия шаблона |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
