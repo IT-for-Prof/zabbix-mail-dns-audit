@@ -265,7 +265,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.39` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.40` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -468,6 +468,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **0.1.40**: "DNSBL check failed" trigger now shows the affected IP, zone, and failure reason inline in the problem name via `{?last(...mail.dnsbl.listed.details)}`; description updated with common causes and remediation (public resolver blocked, local Unbound recommended)
 - **0.1.39**: DKIM key size: RSA min_key_bits and weak_key_count items; WARNING trigger (<2048 bits, suppressed when HIGH active) and HIGH trigger (≤1024 bits); DMARC adkim/aspf informational items; MX→CNAME RFC 5321 §5 violation WARNING trigger
 - **0.1.38**: DMARC rua= checks split: opt-in absent alert (INFO, {$CHECK_DMARC_RUA}=0 by default) + always-on malformed alert (WARNING)
 - **0.1.37**: Removed DMARC rua= missing trigger — rua= is optional per RFC 7489; absence is valid

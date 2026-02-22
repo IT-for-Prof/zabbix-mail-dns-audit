@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.40] - 2026-02-22
+
+### Changed
+- Trigger: "DNSBL check failed" name now includes inline details via `{?last(...mail.dnsbl.listed.details)}` — shows affected IPs, zones, and failure reason directly in the problem name instead of just a count
+- Trigger: "DNSBL check failed" description updated with common causes and remediation steps (public resolver blocked, local Unbound recommended)
+
 ## [0.1.39] - 2026-02-22
 
 ### Added
