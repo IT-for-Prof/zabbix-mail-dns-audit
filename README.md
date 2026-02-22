@@ -215,6 +215,37 @@ curl -L https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main
 5. Добавьте `Template Mail DNS Audit Zabbix`
 6. Create
 
+## Обновление
+
+### Шаг 1: Обновить скрипт
+
+```bash
+wget -O /usr/lib/zabbix/externalscripts/mail.dns.audit \
+  https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main/externalscripts/mail.dns.audit
+chmod 755 /usr/lib/zabbix/externalscripts/mail.dns.audit
+chown zabbix:zabbix /usr/lib/zabbix/externalscripts/mail.dns.audit
+```
+
+> **Zabbix Proxy:** Обновите скрипт на **каждом прокси-сервере**, где он установлен.
+
+### Шаг 2: Обновить шаблон
+
+```bash
+wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
+  https://raw.githubusercontent.com/IT-for-Prof/zabbix-mail-dns-audit/main/template_mail_dns_audit_zabbix.yaml
+```
+
+Импорт в Zabbix: Data collection → Templates → Import → выбрать файл → Import.
+
+### Шаг 3: Проверить версию
+
+После обновления триггер `Script version mismatch` должен исчезнуть. Если триггер остался — скрипт на сервере или прокси не обновлён.
+
+```bash
+# Проверить версию скрипта
+/usr/lib/zabbix/externalscripts/mail.dns.audit --version
+```
+
 ## Конфигурация
 
 Все параметры настраиваются через макросы шаблона в Zabbix:

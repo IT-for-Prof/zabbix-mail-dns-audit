@@ -675,6 +675,7 @@ def main() -> int:
             return fallback
 
     parser = argparse.ArgumentParser(description="Mail DNS audit external check.", allow_abbrev=False)
+    parser.add_argument("--version", action="version", version=VERSION)
     parser.add_argument("domain", help="Domain to audit")
     parser.add_argument("resolver", nargs="?", default=DEFAULT_RESOLVER, help="DNS resolver")
     parser.add_argument("dns_timeout", nargs="?", default=str(DEFAULT_TIMEOUT), help="DNS timeout seconds")
