@@ -467,10 +467,6 @@ Triggers & Alerts
 - **v0.1.17** (2025-12-26): Добавлены проверки и триггеры на дубликаты DNS (MX, DMARC, DKIM, NS, SOA).
 - **v0.1.16** (2025-12-24): Удалены UUID из шаблона для портативности.
 
-## Лицензия
-
-MIT License © itforprof.com by Konstantin Tyutyunnik
-
 ## Ссылки
 
 - GitHub: https://github.com/IT-for-Prof/zabbix-mail-dns-audit

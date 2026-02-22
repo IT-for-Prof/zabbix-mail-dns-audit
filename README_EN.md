@@ -467,10 +467,6 @@ Recent updates:
 - **v0.1.17** (2025-12-26): Added duplicate DNS checks/triggers (MX, DMARC, DKIM, NS, SOA).
 - **v0.1.16** (2025-12-24): Removed UUIDs from template for portability.
 
-## License
-
-MIT License © itforprof.com by Konstantin Tyutyunnik
-
 ## Links
 
 - GitHub: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
