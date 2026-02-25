@@ -37,6 +37,7 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 - ✅ Multiple DNS resolvers with shuffling
 - ✅ Local result caching
 - ✅ Mail client autoconfiguration DNS checks (autoconfig, autodiscover, SRV)
+- ✅ Change detection with before→after display: SPF, MX, DKIM and DMARC change triggers show old→new values in the Problems list Info column (Zabbix operational data)
 
 ## Requirements
 
@@ -499,18 +500,18 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
-- **v0.1.44** — DKIM: `rsa-unknown` instead of `rsa-0`; `dmarc_before`/`dmarc_after` tags on policy downgrade trigger
-- **v0.1.43** — DKIM/DMARC change triggers now show before→after values in operational data
-- **v0.1.42** — MX/SPF change triggers now show before→after values in operational data
-- **0.1.41**: Trigger names improved: "DNS audit script error" now shows error text via `{ITEM.LASTVALUE}`; "DMARC rua= malformed" shows actual bad value; "DNS query slow" shows actual ms; fixed `{ITEM.LASTVALUE3}` bug in "MX IP listed in DNSBL" description (was resolving to nothing)
-- **0.1.40**: "DNSBL check failed" trigger now shows the affected IP, zone, and failure reason inline in the problem name via `{?last(...mail.dnsbl.listed.details)}`; description updated with common causes and remediation (public resolver blocked, local Unbound recommended)
-- **0.1.39**: DKIM key size: RSA min_key_bits and weak_key_count items; WARNING trigger (<2048 bits, suppressed when HIGH active) and HIGH trigger (≤1024 bits); DMARC adkim/aspf informational items; MX→CNAME RFC 5321 §5 violation WARNING trigger
-- **0.1.38**: DMARC rua= checks split: opt-in absent alert (INFO, {$CHECK_DMARC_RUA}=0 by default) + always-on malformed alert (WARNING)
-- **0.1.37**: Removed DMARC rua= missing trigger — rua= is optional per RFC 7489; absence is valid
-- **0.1.36**: Bugfix — DNSBL trigger names now show exact response text; 6 missing skip macros added; 15 triggers restored error dependency; {$TEMPLATE_VERSION} corrected
-- **0.1.35**: Macros to skip DNSSEC/MTA-STS/TLS-RPT/BIMI checks per host ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
-- **0.1.34**: Bugfix — DMARC rua= null handling, SPF a:hostname mx_covered detection, script VERSION sync
-- **0.1.33**: 8 new triggers (MX missing, SPF RFC violations, hash change detection, DMARC rua, DNSBL failures), error dependencies on all triggers, NS trigger fix, {$MAIL_CLIENT_AUTOCONFIG_CHECK} macro
+- **v0.1.44** — DKIM: `rsa-unknown` instead of `rsa-0`; `dmarc_before`/`dmarc_after` tags on policy downgrade trigger; `vendor:` block with author in Zabbix 7.0 native template metadata
+- **v0.1.43** — DKIM and DMARC change triggers now show before→after values in operational data
+- **v0.1.42** — MX and SPF change triggers now show before→after values in operational data
+- **v0.1.41** — Trigger names improved: "DNS audit script error" now shows error text via `{ITEM.LASTVALUE}`; "DMARC rua= malformed" shows actual bad value; "DNS query slow" shows actual ms; fixed `{ITEM.LASTVALUE3}` bug in "MX IP listed in DNSBL" description
+- **v0.1.40** — "DNSBL check failed" trigger now shows the affected IP, zone, and failure reason inline in the problem name via `{?last(...mail.dnsbl.listed.details)}`; description updated with common causes and remediation (public resolver blocked, local Unbound recommended)
+- **v0.1.39** — DKIM key size: RSA min_key_bits and weak_key_count items; WARNING trigger (<2048 bits, suppressed when HIGH active) and HIGH trigger (≤1024 bits); DMARC adkim/aspf informational items; MX→CNAME RFC 5321 §5 violation WARNING trigger
+- **v0.1.38** — DMARC rua= checks split: opt-in absent alert (INFO, {$CHECK_DMARC_RUA}=0 by default) + always-on malformed alert (WARNING)
+- **v0.1.37** — Removed DMARC rua= missing trigger — rua= is optional per RFC 7489; absence is valid
+- **v0.1.36** — Bugfix — DNSBL trigger names now show exact response text; 6 missing skip macros added; 15 triggers restored error dependency; {$TEMPLATE_VERSION} corrected
+- **v0.1.35** — Macros to skip DNSSEC/MTA-STS/TLS-RPT/BIMI checks per host ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
+- **v0.1.34** — Bugfix — DMARC rua= null handling, SPF a:hostname mx_covered detection, script VERSION sync
+- **v0.1.33** — 8 new triggers (MX missing, SPF RFC violations, hash change detection, DMARC rua, DNSBL failures), error dependencies on all triggers, NS trigger fix, {$MAIL_CLIENT_AUTOCONFIG_CHECK} macro
 - **v0.1.32** (2026-02-20): Added `mail.script.version` item and WARNING trigger for version mismatch against `{$TEMPLATE_VERSION}` — detects outdated script on proxies.
 - **v0.1.31** (2026-02-20): Fixed script shebang (`#!/usr/bin/python3`); added `.gitattributes` for LF line endings — fixes script execution failure in Zabbix caused by CRLF and missing PATH.
 - **v0.1.30** (2026-02-20): Raised DMARC p=none trigger severity to WARNING; added HIGH trigger for DMARC policy downgrade (quarantine/reject → none).

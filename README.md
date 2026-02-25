@@ -37,6 +37,7 @@ Zabbix Mail DNS Audit — интегрированное решение для �
 - ✅ Несколько DNS резолверов с перемешиванием
 - ✅ Локальное кэширование результатов
 - ✅ Проверка DNS автоконфигурации почтового клиента (autoconfig, autodiscover, SRV)
+- ✅ Отображение изменений до/после: триггеры SPF, MX, DKIM и DMARC показывают «было → стало» в колонке Info списка проблем (Zabbix operational data)
 
 ## Требования
 
@@ -499,18 +500,18 @@ Triggers & Alerts
 Полная история: [CHANGELOG.md](CHANGELOG.md)
 
 Последние обновления:
-- **v0.1.44** — DKIM: `rsa-unknown` вместо `rsa-0`; теги `dmarc_before`/`dmarc_after` на триггере понижения DMARC
-- **v0.1.43** — DKIM/DMARC change triggers now show before→after values in operational data
-- **v0.1.42** — MX/SPF change triggers now show before→after values in operational data
-- **0.1.41**: Имена триггеров: "DNS audit script error" показывает текст ошибки `{ITEM.LASTVALUE}`; "DMARC rua= malformed" показывает неверное значение; "DNS query slow" показывает фактическое время; исправлен баг `{ITEM.LASTVALUE3}` в описании триггера "MX IP listed in DNSBL"
-- **0.1.40**: Триггер "DNSBL check failed" теперь показывает IP, зону и причину прямо в имени проблемы через `{?last(...mail.dnsbl.listed.details)}`; описание обновлено с указанием общих причин (публичный резолвер заблокирован, рекомендуется локальный Unbound)
-- **0.1.39**: DKIM ключ: размер RSA (min_key_bits, weak_key_count), триггеры WARNING (<2048 бит) и HIGH (≤1024 бит); DMARC adkim/aspf — информационные элементы; MX→CNAME нарушение RFC 5321 §5 — триггер WARNING
-- **0.1.38**: DMARC rua= checks: opt-in absent alert (INFO, {$CHECK_DMARC_RUA}=0 by default) + always-on malformed alert (WARNING)
-- **0.1.37**: Removed DMARC rua= missing trigger — rua= is optional per RFC 7489; absence is valid
-- **0.1.36**: Bugfix — DNSBL trigger names now show exact response text; 6 missing skip macros added; 15 triggers restored error dependency; {$TEMPLATE_VERSION} corrected
-- **0.1.35**: Macros to skip DNSSEC/MTA-STS/TLS-RPT/BIMI checks per host ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
-- **0.1.34**: Bugfix — DMARC rua= null handling, SPF a:hostname mx_covered detection, script VERSION sync
-- **0.1.33**: 8 new triggers (MX missing, SPF RFC violations, hash change detection, DMARC rua, DNSBL failures), error dependencies on all triggers, NS trigger fix, {$MAIL_CLIENT_AUTOCONFIG_CHECK} macro
+- **v0.1.44** — DKIM: `rsa-unknown` вместо `rsa-0`; теги `dmarc_before`/`dmarc_after` на триггере понижения DMARC; блок `vendor:` с автором в метаданных шаблона Zabbix 7.0
+- **v0.1.43** — Триггеры изменения DKIM и DMARC теперь показывают «было → стало» в колонке Info списка проблем
+- **v0.1.42** — Триггеры изменения MX и SPF теперь показывают «было → стало» в колонке Info списка проблем
+- **v0.1.41** — Имена триггеров: "DNS audit script error" показывает текст ошибки `{ITEM.LASTVALUE}`; "DMARC rua= malformed" показывает неверное значение; "DNS query slow" показывает фактическое время; исправлен баг `{ITEM.LASTVALUE3}` в описании триггера "MX IP listed in DNSBL"
+- **v0.1.40** — Триггер "DNSBL check failed" теперь показывает IP, зону и причину прямо в имени проблемы через `{?last(...mail.dnsbl.listed.details)}`; описание обновлено с указанием общих причин (публичный резолвер заблокирован, рекомендуется локальный Unbound)
+- **v0.1.39** — DKIM ключ: размер RSA (min_key_bits, weak_key_count), триггеры WARNING (<2048 бит) и HIGH (≤1024 бит); DMARC adkim/aspf — информационные элементы; MX→CNAME нарушение RFC 5321 §5 — триггер WARNING
+- **v0.1.38** — DMARC rua=: opt-in триггер на отсутствие (INFO, {$CHECK_DMARC_RUA}=0 по умолчанию) + всегда активный триггер на некорректный формат (WARNING)
+- **v0.1.37** — Удалён триггер DMARC rua= missing — rua= опционален по RFC 7489; отсутствие допустимо
+- **v0.1.36** — Bugfix: имена DNSBL-триггеров теперь показывают точный текст ответа; добавлены 6 пропущенных skip-макросов; восстановлена зависимость от mail.dns.error в 15 триггерах; исправлено значение {$TEMPLATE_VERSION}
+- **v0.1.35** — Макросы для отключения проверок DNSSEC/MTA-STS/TLS-RPT/BIMI на уровне хоста ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
+- **v0.1.34** — Bugfix: обработка null в DMARC rua=, определение mx_covered через a:hostname в SPF, синхронизация VERSION скрипта
+- **v0.1.33** — 8 новых триггеров (отсутствие MX, нарушения RFC SPF, обнаружение изменений, DMARC rua, сбои DNSBL), зависимости от ошибок на всех триггерах, макрос {$MAIL_CLIENT_AUTOCONFIG_CHECK}
 - **v0.1.32** (2026-02-20): Добавлен элемент `mail.script.version` и триггер WARNING на несовпадение версии скрипта с `{$TEMPLATE_VERSION}` — выявляет устаревший скрипт на прокси.
 - **v0.1.31** (2026-02-20): Исправлен shebang скрипта (`#!/usr/bin/python3`); добавлен `.gitattributes` для LF-окончаний строк — устраняет сбой запуска скрипта из Zabbix из-за CRLF и отсутствия PATH.
 - **v0.1.30** (2026-02-20): Повышена важность триггера DMARC p=none до WARNING; добавлен триггер HIGH на откат политики DMARC с quarantine/reject → none.

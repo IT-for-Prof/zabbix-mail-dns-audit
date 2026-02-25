@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Event tags `dmarc_before`/`dmarc_after` on "DMARC policy downgraded" trigger for API/webhook consistency
+- Template `vendor:` block (`name: itforprof.com`) — author/vendor displayed in native Zabbix 7.0 template metadata; version removed from description text
 
 ## [0.1.43] - 2026-02-25
 
