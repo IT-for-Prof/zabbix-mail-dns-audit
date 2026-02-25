@@ -7,9 +7,11 @@ zabbix_export:
     - uuid: 5f2a484eee7342a7bf440c60fcebca00
       template: 'Template Mail DNS Audit Zabbix'
       name: 'Template Mail DNS Audit Zabbix'
+      vendor:
+        name: itforprof.com
+        version: 0.1.44
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Version: 0.1.44
         Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
         itforprof.com by Konstantin Tyutyunnik
         

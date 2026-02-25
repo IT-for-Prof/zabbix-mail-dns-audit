@@ -38,6 +38,7 @@ Invalid UUIDs like `a1b2c3d4e5f64a7b8c9d0e1f2a3b4c5d` will cause:
 - Script and template share the same version number (e.g., `0.1.29`)
 - Bump `VERSION` constant in `externalscripts/mail.dns.audit`
 - Bump `{$TEMPLATE_VERSION}` macro value in `template_mail_dns_audit_zabbix.yaml`
+- Bump `vendor.version` value in `template_mail_dns_audit_zabbix.yaml` (top-level template block)
 - Add entry to `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading
 - Update `{$TEMPLATE_VERSION}` value in both `README.md` and `README_EN.md`
 - Add entry to "Recent updates" / "Последние обновления" in both READMEs
