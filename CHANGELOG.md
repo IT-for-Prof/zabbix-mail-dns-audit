@@ -1,6 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.42] - 2026-02-25
+
+### Added
+- Item: `mail.spf.record` — stores the raw SPF TXT string; used to show before/after in trigger operational data
+- Item: `mail.mx.records` — stores MX records formatted as "priority host" (comma-separated); used for before/after display
+- Trigger operational data (`opdata`) on "SPF record changed": shows `old SPF → new SPF` in Problems list Info column
+- Trigger operational data (`opdata`) on "MX records changed": shows `old MX → new MX` in Problems list Info column
+- Event tags `spf_before`/`spf_after` and `mx_before`/`mx_after` on respective triggers for API/webhook consumers
+
 ## [0.1.41] - 2026-02-22
 
 ### Changed

@@ -921,6 +921,7 @@ zabbix_export:
             - uuid: 747e6a5a4dd74f73b946e572d776bbf7
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.hash)<>last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2))>0'
               name: '{HOST.HOST}: MX records changed'
+              opdata: '{?last(/Template Mail DNS Audit Zabbix/mail.mx.records,#2)} → {?last(/Template Mail DNS Audit Zabbix/mail.mx.records)}'
               priority: WARNING
               description: 'MX records have changed since the last check. Verify this change was intentional. MX changes affect mail routing for the entire domain.'
               dependencies:
@@ -932,6 +933,33 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+                - tag: mx_before
+                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.mx.records,#2)}'
+                - tag: mx_after
+                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.mx.records)}'
+        - uuid: 8c5d015b60284b159edfb8cff85f73af
+          name: 'MX records summary'
+          type: DEPENDENT
+          key: mail.mx.records
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'MX records formatted as "priority host" entries (comma-separated). Used to display before/after values when MX changes are detected.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.mx
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '[]'
+            - type: JAVASCRIPT
+              parameters:
+                - 'var mx = JSON.parse(value); return mx.map(function(r){ return r.prio + " " + r.host; }).join(", ");'
+            - type: DISCARD_UNCHANGED
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
         - uuid: 5f2a484eee7342a7bf440c60fcebca01
           name: 'Unresolved MX targets'
           type: DEPENDENT
@@ -1287,6 +1315,7 @@ zabbix_export:
             - uuid: f6ecb51d8e564276b16b316b00ede11d
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.hash)<>last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2))>0'
               name: '{HOST.HOST}: SPF record changed'
+              opdata: '{?last(/Template Mail DNS Audit Zabbix/mail.spf.record,#2)} → {?last(/Template Mail DNS Audit Zabbix/mail.spf.record)}'
               priority: WARNING
               description: 'The SPF TXT record has changed since the last check. Verify this change was intentional. Unexpected SPF changes may indicate unauthorized modification or DNS hijacking.'
               dependencies:
@@ -1298,6 +1327,30 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+                - tag: spf_before
+                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.spf.record,#2)}'
+                - tag: spf_after
+                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.spf.record)}'
+        - uuid: 4bbaf9ccc53c4db0bc6b60df112a3c42
+          name: 'SPF record text'
+          type: DEPENDENT
+          key: mail.spf.record
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'The raw SPF TXT record string (first record). Used to display before/after values when SPF changes are detected.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.spf[0]
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
+            - type: DISCARD_UNCHANGED
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
         - uuid: 1617b13c04fe466ea123ed46b886d0c8
           name: 'SPF has ptr'
           type: DEPENDENT
@@ -1909,7 +1962,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.41
+          value: 0.1.42
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

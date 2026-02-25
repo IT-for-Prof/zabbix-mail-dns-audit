@@ -296,7 +296,7 @@ wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM (через запятую, без `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.41` | Версия шаблона |
+| `{$TEMPLATE_VERSION}` | `0.1.42` | Версия шаблона |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
 ## Использование
@@ -499,6 +499,7 @@ Triggers & Alerts
 Полная история: [CHANGELOG.md](CHANGELOG.md)
 
 Последние обновления:
+- **v0.1.42** — MX/SPF change triggers now show before→after values in operational data
 - **0.1.41**: Имена триггеров: "DNS audit script error" показывает текст ошибки `{ITEM.LASTVALUE}`; "DMARC rua= malformed" показывает неверное значение; "DNS query slow" показывает фактическое время; исправлен баг `{ITEM.LASTVALUE3}` в описании триггера "MX IP listed in DNSBL"
 - **0.1.40**: Триггер "DNSBL check failed" теперь показывает IP, зону и причину прямо в имени проблемы через `{?last(...mail.dnsbl.listed.details)}`; описание обновлено с указанием общих причин (публичный резолвер заблокирован, рекомендуется локальный Unbound)
 - **0.1.39**: DKIM ключ: размер RSA (min_key_bits, weak_key_count), триггеры WARNING (<2048 бит) и HIGH (≤1024 бит); DMARC adkim/aspf — информационные элементы; MX→CNAME нарушение RFC 5321 §5 — триггер WARNING
