@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.43] - 2026-02-25
+
+### Added
+- Item: `mail.dkim.records` — stores DKIM records formatted as "selector:type-bits" (comma-separated); used for before/after display
+- Trigger operational data (`opdata`) on "DKIM record changed": shows `old DKIM → new DKIM` in Problems list Info column
+- Trigger operational data (`opdata`) on "DMARC policy downgraded": shows `old policy → none` in Problems list Info column
+- Event tags `dkim_before`/`dkim_after` on DKIM changed trigger for API/webhook consumers
+
 ## [0.1.42] - 2026-02-25
 
 ### Added
