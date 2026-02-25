@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.44] - 2026-02-25
+
+### Fixed
+- DKIM records summary: show `rsa-unknown` instead of `rsa-0` when key size cannot be parsed
+
+### Added
+- Event tags `dmarc_before`/`dmarc_after` on "DMARC policy downgraded" trigger for API/webhook consistency
+
 ## [0.1.43] - 2026-02-25
 
 ### Added

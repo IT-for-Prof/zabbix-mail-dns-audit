@@ -79,7 +79,7 @@ zabbix_export:
               error_handler_params: '[]'
             - type: JAVASCRIPT
               parameters:
-                - 'var r = JSON.parse(value); return r.map(function(d){ return d.selector + ":" + d.k + "-" + d.key_bits; }).join(", ");'
+                - 'var r = JSON.parse(value); return r.map(function(d){ return d.selector + ":" + d.k + "-" + (d.key_bits > 0 ? d.key_bits : "unknown"); }).join(", ");'
             - type: DISCARD_UNCHANGED
           master_item:
             key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
@@ -289,6 +289,10 @@ zabbix_export:
                   value: 'Mail DNS'
                 - tag: component
                   value: mail-dns
+                - tag: dmarc_before
+                  value: '{ITEM.PREVVALUE}'
+                - tag: dmarc_after
+                  value: none
         - uuid: 5fd95e5b13494827ba65a565950203e7
           name: 'DMARC present'
           type: DEPENDENT
@@ -1991,7 +1995,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.43
+          value: 0.1.44
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

@@ -296,7 +296,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.43` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.44` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -499,6 +499,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.44** — DKIM: `rsa-unknown` instead of `rsa-0`; `dmarc_before`/`dmarc_after` tags on policy downgrade trigger
 - **v0.1.43** — DKIM/DMARC change triggers now show before→after values in operational data
 - **v0.1.42** — MX/SPF change triggers now show before→after values in operational data
 - **0.1.41**: Trigger names improved: "DNS audit script error" now shows error text via `{ITEM.LASTVALUE}`; "DMARC rua= malformed" shows actual bad value; "DNS query slow" shows actual ms; fixed `{ITEM.LASTVALUE3}` bug in "MX IP listed in DNSBL" description (was resolving to nothing)
