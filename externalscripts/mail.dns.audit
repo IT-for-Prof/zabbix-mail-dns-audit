@@ -22,7 +22,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.44"
+VERSION = "0.1.45"
 
 DEFAULT_RESOLVER = "1.1.1.1"
 DEFAULT_TIMEOUT = 3.0
@@ -547,10 +547,20 @@ def check_dnsbl(
             listed_for_entry.append({"ip": ip, "zone": zone, "response": responses, "txt": txt_answers})
         return entry, listed_for_entry
 
+    # Short TTL for errors: retry quickly instead of caching failures for the full period
+    error_ttl = min(ttl, 120)
+    # Include resolver in cache key so switching resolvers forces fresh queries
+    resolver_id = ",".join(sorted(getattr(resolver, "nameservers", [])))
+
     for zone in zones:
-        key = f"{ip}|{zone}"
+        key = f"{ip}|{zone}|{resolver_id}"
         cached = cache.get(key) if cache else None
-        if cached and now - cached.get("ts", 0) <= ttl:
+        if cached:
+            cached_status = cached.get("status", "NOT LISTED")
+            effective_ttl = error_ttl if cached_status in ("CHECK FAILED", "POLICY/ERROR") else ttl
+            if now - cached.get("ts", 0) > effective_ttl:
+                cached = None
+        if cached:
             status = cached.get("status", "NOT LISTED")
             a_cached = cached.get("a", cached.get("response", []))
             txt_cached = cached.get("txt", [])

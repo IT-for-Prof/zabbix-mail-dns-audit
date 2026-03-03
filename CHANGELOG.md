@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.45] - 2026-03-03
+
+### Fixed
+- DNSBL cache: errors (CHECK FAILED, POLICY/ERROR) were cached for full TTL (20 min), now expire after 120 seconds for quick retry
+- DNSBL cache: switching DNS resolver no longer serves stale results from a previous resolver — resolver is now part of the cache key
+
 ## [0.1.44] - 2026-02-25
 
 ### Fixed
