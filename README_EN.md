@@ -297,7 +297,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.45` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.46` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -500,6 +500,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.46** — SPF: fixed qualifier parsing per RFC 7208 §4.6.1 (`+mx`, `+a`, `-include:...` were silently ignored); fixed `all` falsely matching the `a` mechanism; default DNS resolver changed to `127.0.0.1`
 - **v0.1.45** — DNSBL cache: errors (CHECK FAILED, POLICY/ERROR) now expire after 120s instead of full TTL; switching DNS resolver no longer serves stale results — resolver is now part of the cache key
 - **v0.1.44** — DKIM: `rsa-unknown` instead of `rsa-0`; `dmarc_before`/`dmarc_after` tags on policy downgrade trigger; `vendor:` block with author in Zabbix 7.0 native template metadata
 - **v0.1.43** — DKIM and DMARC change triggers now show before→after values in operational data
