@@ -22,9 +22,9 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.45"
+VERSION = "0.1.46"
 
-DEFAULT_RESOLVER = "1.1.1.1"
+DEFAULT_RESOLVER = "127.0.0.1"
 DEFAULT_TIMEOUT = 3.0
 DEFAULT_CHECK_IPV6 = False
 DEFAULT_DNSBL_ZONES = ["zen.spamhaus.org", "bl.spamcop.net", "b.barracudacentral.org"]
@@ -141,19 +141,24 @@ def parse_allowlist(raw: str) -> List[ipaddress._BaseNetwork]:
     return items
 
 
+def _strip_spf_qualifier(token: str) -> str:
+    if token and token[0] in "+-~?":
+        return token[1:]
+    return token
+
+
 def spf_lookup_estimate(mechanisms: List[str]) -> int:
     total = 0
     for mech in mechanisms:
         token = mech.lower()
-        if token.startswith("include:"):
+        bare = _strip_spf_qualifier(token)
+        if bare.startswith("include:") or bare.startswith("redirect="):
             total += 1
-        elif token.startswith("redirect="):
+        elif bare.startswith("exists:"):
             total += 1
-        elif token.startswith("exists:"):
+        elif bare == "a" or bare.startswith("a:") or bare.startswith("a/"):
             total += 1
-        elif token.startswith("a"):
-            total += 1
-        elif token.startswith("mx"):
+        elif bare == "mx" or bare.startswith("mx:") or bare.startswith("mx/"):
             total += 1
     return total
 
@@ -202,17 +207,17 @@ def parse_spf(
     parts = primary.split()
     for part in parts[1:]:
         token = part.lower()
-        if token.startswith("ptr"):
+        bare = _strip_spf_qualifier(token)
+        if bare == "ptr" or bare.startswith("ptr:"):
             has_ptr = True
-        if token.startswith("include:") or token.startswith("redirect=") or token.startswith("exists:"):
+        if bare.startswith("include:") or bare.startswith("redirect=") or bare.startswith("exists:"):
             lookup_mechanisms.append(token)
             target = token.split(":", 1)[1] if ":" in token else ""
             if target and target.rstrip(".") in mx_hosts:
                 include_matches_mx.append(target.rstrip("."))
-        if token.startswith("a"):
+        if bare == "a" or bare.startswith("a:") or bare.startswith("a/"):
             lookup_mechanisms.append(token)
             target = token.split(":", 1)[1] if ":" in token else domain
-            # a:hostname directly names an MX host → counts as MX covered
             if ":" in token and target.rstrip(".") in mx_hosts:
                 include_matches_mx.append(target.rstrip("."))
             records, _, _ = query_records(resolver, target, "A")
@@ -221,14 +226,14 @@ def parse_spf(
                 records.extend(v6)
             if not records:
                 unresolved_a.append(target)
-        if token.startswith("mx"):
+        if bare == "mx" or bare.startswith("mx:") or bare.startswith("mx/"):
             has_mx_mech = True
             lookup_mechanisms.append(token)
             target = token.split(":", 1)[1] if ":" in token else domain
             mx_records, _, _ = query_records(resolver, target, "MX")
             if not mx_records:
                 unresolved_mx.append(target)
-        if token.startswith("ip4:") or token.startswith("ip6:"):
+        if bare.startswith("ip4:") or bare.startswith("ip6:"):
             cidr_entries.append(part)
             raw_net = part.split(":", 1)[1]
             try:
@@ -237,7 +242,7 @@ def parse_spf(
                     cidr_outside.append(part)
             except ValueError:
                 cidr_outside.append(part)
-        if token.endswith("all"):
+        if bare == "all":
             all_mechanism = part
             tok_clean = token
             if tok_clean == "all" or tok_clean.startswith("+all"):

@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.46] - 2026-04-23
+
+### Fixed
+- SPF parser: RFC 7208 §4.6.1 compliance — mechanism identification now strips qualifier prefixes (`+`, `-`, `~`, `?`) before matching. Previously `+mx`, `+a`, `-include:...` etc. were silently ignored because `token.startswith("mx")` fails for `+mx`.
+- SPF parser: `a` mechanism no longer incorrectly matches `all` — `token.startswith("a")` matched `"all"` since `"all".startswith("a")` is true, causing `all` to be treated as an `a` mechanism (extra DNS query, inflated lookup count). Now uses exact match: `bare == "a" or bare.startswith("a:") or bare.startswith("a/")`.
+- SPF parser: `all` mechanism detection changed from `endswith("all")` to exact match `bare == "all"` after qualifier stripping — avoids false matches on unrelated tokens.
+
+### Changed
+- Default DNS resolver changed from `1.1.1.1` (Cloudflare) to `127.0.0.1` (localhost) — assumes a local recursive resolver (Unbound) is available on Zabbix server/proxy hosts.
+
 ## [0.1.45] - 2026-03-03
 
 ### Fixed
