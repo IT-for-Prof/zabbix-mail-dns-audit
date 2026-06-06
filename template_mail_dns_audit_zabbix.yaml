@@ -9,11 +9,14 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       vendor:
         name: itforprof.com
-        version: 0.1.46
+        version: 0.1.47
       description: |
         Comprehensive Mail DNS Posture Audit.
-        Repo: https://github.com/IT-for-Prof/zabbix-mail-dns-audit
-        itforprof.com by Konstantin Tyutyunnik
+
+        Author:  Konstantin Tyutyunnik / Константин Тютюнник
+        Site:    https://itforprof.com
+        Repo:    https://github.com/IT-for-Prof/zabbix-mail-dns-audit
+        License: MIT (c) 2026 Konstantin Tyutyunnik
         
         Monitors:
         - MX records (presence, changes, TTL)
@@ -47,9 +50,9 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: a48aec8440bf4c9ea15aa75a7fd1de4e
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dkim.hash)<>last(/Template Mail DNS Audit Zabbix/mail.dkim.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.hash,#2))>0'
+              expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dkim.records.prev))>=0 and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.records))>=0 and last(/Template Mail DNS Audit Zabbix/mail.dkim.hash)<>last(/Template Mail DNS Audit Zabbix/mail.dkim.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.dkim.hash,#2))>0'
               name: '{HOST.HOST}: DKIM record changed'
-              opdata: '{?last(/Template Mail DNS Audit Zabbix/mail.dkim.records,#2)} → {?last(/Template Mail DNS Audit Zabbix/mail.dkim.records)}'
+              opdata: '{ITEM.LASTVALUE1} → {ITEM.LASTVALUE2}'
               priority: WARNING
               description: 'DKIM public key records have changed since the last check. Verify this change was intentional — DKIM key rotation is normal, but unexpected changes may indicate DNS hijacking.'
               dependencies:
@@ -62,9 +65,9 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
                 - tag: dkim_before
-                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.dkim.records,#2)}'
+                  value: '{ITEM.LASTVALUE1}'
                 - tag: dkim_after
-                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.dkim.records)}'
+                  value: '{ITEM.LASTVALUE2}'
         - uuid: 32615e5b5e664ed2a8344fe690cdde7f
           name: 'DKIM records summary'
           type: DEPENDENT
@@ -82,6 +85,26 @@ zabbix_export:
             - type: JAVASCRIPT
               parameters:
                 - 'var r = JSON.parse(value); return r.map(function(d){ return d.selector + ":" + d.k + "-" + (d.key_bits > 0 ? d.key_bits : "unknown"); }).join(", ");'
+            - type: DISCARD_UNCHANGED
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 96dd52bf5a38489dae74754f35cb38e5
+          name: 'DKIM records summary (previous)'
+          type: DEPENDENT
+          key: mail.dkim.records.prev
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Previously seen DKIM records ("selector:type-bits", comma-separated), supplied by the script via its cross-run cache. Used to display the "before" value when a DKIM change is detected.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.prev.dkim
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
             - type: DISCARD_UNCHANGED
           master_item:
             key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
@@ -277,11 +300,11 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
             - uuid: fe7655707cb74c8cbee9b1c8acafdbc4
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none" and (last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="quarantine" or last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="reject")'
-              name: 'DMARC policy downgraded to none for {HOST.HOST} (was {ITEM.PREVVALUE})'
-              opdata: '{ITEM.PREVVALUE} → none'
+              expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy.prev))>=0 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.present)=1 and last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy)="none" and (last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="quarantine" or last(/Template Mail DNS Audit Zabbix/mail.dmarc.policy,#2)="reject")'
+              name: 'DMARC policy downgraded to none for {HOST.HOST} (was {ITEM.LASTVALUE1})'
+              opdata: '{ITEM.LASTVALUE1} → none'
               priority: HIGH
-              description: 'DMARC policy was downgraded from {ITEM.PREVVALUE} to none. This is a security regression — messages will no longer be quarantined or rejected. Restore p=quarantine or p=reject immediately.'
+              description: 'DMARC policy was downgraded from {ITEM.LASTVALUE1} to none. This is a security regression — messages will no longer be quarantined or rejected. Restore p=quarantine or p=reject immediately.'
               dependencies:
                 - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
@@ -292,9 +315,32 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
                 - tag: dmarc_before
-                  value: '{ITEM.PREVVALUE}'
+                  value: '{ITEM.LASTVALUE1}'
                 - tag: dmarc_after
                   value: none
+        - uuid: bd2fb418af02415cb16695a24525e69d
+          name: 'DMARC policy (previous)'
+          type: DEPENDENT
+          key: mail.dmarc.policy.prev
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Previously seen DMARC policy (p=), supplied by the script via its cross-run cache. Used to display the "before" value when a DMARC policy downgrade is detected.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.prev.dmarc
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
+            - type: JAVASCRIPT
+              parameters:
+                - 'return (["none", "quarantine", "reject"].indexOf(value) !== -1) ? value : "none";'
+            - type: DISCARD_UNCHANGED
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
         - uuid: 5fd95e5b13494827ba65a565950203e7
           name: 'DMARC present'
           type: DEPENDENT
@@ -652,7 +698,7 @@ zabbix_export:
           triggers:
             - uuid: 6dce0af48c254b3f84a95e15f6666666
               expression: 'last(/Template Mail DNS Audit Zabbix/mail.dns.query_time_ms)>{$DNS_SLOW_MS}'
-              name: 'DNS query slow ({ITEM.LASTVALUE}ms > {$DNS_SLOW_MS}ms) for {HOST.HOST}'
+              name: 'DNS query slow ({ITEM.LASTVALUE} > {$DNS_SLOW_MS}ms) for {HOST.HOST}'
               priority: WARNING
               description: 'DNS audit script exceeded query time threshold. Check DNS resolver performance or network latency.'
               tags:
@@ -696,8 +742,8 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: bf34ff393e7a45048c9c94a2d8956bd5
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.dnsbl.check_failed.count)>0'
-              name: '{HOST.HOST}: DNSBL check failed ({ITEM.LASTVALUE} check(s)) — {?last(/Template Mail DNS Audit Zabbix/mail.dnsbl.listed.details)}'
+              expression: 'min(/Template Mail DNS Audit Zabbix/mail.dnsbl.check_failed.count,#2)>0 and length(last(/Template Mail DNS Audit Zabbix/mail.dnsbl.listed.details))>=0'
+              name: '{HOST.HOST}: DNSBL check failed ({ITEM.LASTVALUE1} check(s)) — {ITEM.LASTVALUE2}'
               priority: WARNING
               description: 'One or more DNSBL zone queries failed with a technical error (timeout, SERVFAIL, empty response). DNSBL status is unknown for the affected IP/zone pairs. See problem name for details. Common causes: (1) Public resolver blocked by DNSBL — switch to a local Unbound resolver and set {$DNS_RESOLVER}=127.0.0.1; (2) DNSBL zone unreachable — remove it from {$DNSBL_ZONES}.'
               dependencies:
@@ -954,9 +1000,9 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: 747e6a5a4dd74f73b946e572d776bbf7
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.hash)<>last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2))>0'
+              expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.mx.records.prev))>=0 and length(last(/Template Mail DNS Audit Zabbix/mail.mx.records))>=0 and last(/Template Mail DNS Audit Zabbix/mail.mx.hash)<>last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.mx.hash,#2))>0'
               name: '{HOST.HOST}: MX records changed'
-              opdata: '{?last(/Template Mail DNS Audit Zabbix/mail.mx.records,#2)} → {?last(/Template Mail DNS Audit Zabbix/mail.mx.records)}'
+              opdata: '{ITEM.LASTVALUE1} → {ITEM.LASTVALUE2}'
               priority: WARNING
               description: 'MX records have changed since the last check. Verify this change was intentional. MX changes affect mail routing for the entire domain.'
               dependencies:
@@ -969,9 +1015,9 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
                 - tag: mx_before
-                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.mx.records,#2)}'
+                  value: '{ITEM.LASTVALUE1}'
                 - tag: mx_after
-                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.mx.records)}'
+                  value: '{ITEM.LASTVALUE2}'
         - uuid: 8c5d015b60284b159edfb8cff85f73af
           name: 'MX records summary'
           type: DEPENDENT
@@ -989,6 +1035,26 @@ zabbix_export:
             - type: JAVASCRIPT
               parameters:
                 - 'var mx = JSON.parse(value); return mx.map(function(r){ return r.prio + " " + r.host; }).join(", ");'
+            - type: DISCARD_UNCHANGED
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: 8e5c36f0429b4bd5af2fe6f1a8039c11
+          name: 'MX records (previous)'
+          type: DEPENDENT
+          key: mail.mx.records.prev
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Previously seen MX records ("priority host", comma-separated), supplied by the script via its cross-run cache. Used to display the "before" value when an MX change is detected.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.prev.mx
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
             - type: DISCARD_UNCHANGED
           master_item:
             key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
@@ -1348,9 +1414,9 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: f6ecb51d8e564276b16b316b00ede11d
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.spf.hash)<>last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2))>0'
+              expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.spf.record.prev))>=0 and length(last(/Template Mail DNS Audit Zabbix/mail.spf.record))>=0 and last(/Template Mail DNS Audit Zabbix/mail.spf.hash)<>last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2) and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash))>0 and length(last(/Template Mail DNS Audit Zabbix/mail.spf.hash,#2))>0'
               name: '{HOST.HOST}: SPF record changed'
-              opdata: '{?last(/Template Mail DNS Audit Zabbix/mail.spf.record,#2)} → {?last(/Template Mail DNS Audit Zabbix/mail.spf.record)}'
+              opdata: '{ITEM.LASTVALUE1} → {ITEM.LASTVALUE2}'
               priority: WARNING
               description: 'The SPF TXT record has changed since the last check. Verify this change was intentional. Unexpected SPF changes may indicate unauthorized modification or DNS hijacking.'
               dependencies:
@@ -1363,9 +1429,9 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
                 - tag: spf_before
-                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.spf.record,#2)}'
+                  value: '{ITEM.LASTVALUE1}'
                 - tag: spf_after
-                  value: '{?last(/Template Mail DNS Audit Zabbix/mail.spf.record)}'
+                  value: '{ITEM.LASTVALUE2}'
         - uuid: 4bbaf9ccc53c4db0bc6b60df112a3c42
           name: 'SPF record text'
           type: DEPENDENT
@@ -1378,6 +1444,26 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.spf[0]
+              error_handler: CUSTOM_VALUE
+              error_handler_params: ''
+            - type: DISCARD_UNCHANGED
+          master_item:
+            key: 'mail.dns.audit[{HOST.HOST},{$DNS_RESOLVER},{$DNS_TIMEOUT_SEC},{$CHECK_IPV6},{$DNSBL_ZONES},{$CIDR_ALLOWLIST},{$SPF_MAX_LOOKUPS},{$SPF_EXPECT_ALL},{$DNSBL_CACHE_TTL_SEC},{$MAX_MX_CHECK},{$DNSBL_MAX_IP},{$DKIM_SELECTORS},{$DNS_SHUFFLE}]'
+          tags:
+            - tag: Application
+              value: 'Mail DNS'
+        - uuid: eea648a588ea465b838eae7a1c3c5b9d
+          name: 'SPF record text (previous)'
+          type: DEPENDENT
+          key: mail.spf.record.prev
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Previously seen SPF TXT record, supplied by the script via its cross-run cache. Used to display the "before" value when an SPF change is detected (Zabbix has no usable previous-value macro for text in operational data).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.prev.spf
               error_handler: CUSTOM_VALUE
               error_handler_params: ''
             - type: DISCARD_UNCHANGED
@@ -1920,10 +2006,10 @@ zabbix_export:
                 - tag: component
                   value: mail-dns
             - uuid: 6e43d4d3f8f44f1ea4e7fd5fce6cb9e4
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed[{#MXIP}])=1 and last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.zone[{#MXIP}])<>"*UNKNOWN*"'
+              expression: 'last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed[{#MXIP}])=1 and last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.zone[{#MXIP}])<>"*UNKNOWN*" and length(last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}]))>=0'
               name: '{HOST.HOST}: MX {#MXHOST} IP {#MXIP} listed in DNSBL {ITEM.LASTVALUE2}'
               priority: HIGH
-              description: 'MX IP address is found in blackhole list. Reason: {?last(/Template Mail DNS Audit Zabbix/mail.mx.ip.listed.txt[{#MXIP}])}. Contact DNSBL operator or review mail server configuration.'
+              description: 'MX IP address is found in blackhole list. Reason: {ITEM.LASTVALUE3}. Contact DNSBL operator or review mail server configuration.'
               manual_close: 'YES'
               tags:
                 - tag: Application
@@ -1997,7 +2083,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.46
+          value: 0.1.47
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

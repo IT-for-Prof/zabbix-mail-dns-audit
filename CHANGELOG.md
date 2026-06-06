@@ -1,6 +1,21 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.47] - 2026-06-06
+
+### Fixed
+- DNSBL "check failed" aggregate trigger: problem name showed `*UNKNOWN*` because it used an expression macro `{?last(…mail.dnsbl.listed.details)}` on a TEXT item (Zabbix expression macros evaluate numerically and cannot render text). Now uses `{ITEM.LASTVALUE2}` with the details item present in the expression, and requires two consecutive failed polls (`min(…,#2)>0`) to suppress single transient resolver blips.
+- "MX IP listed in DNSBL" trigger: Reason in the description showed `*UNKNOWN*` (same expression-macro-on-text issue) — now `{ITEM.LASTVALUE3}`.
+- "DNS query slow" trigger name showed a doubled unit (`4409 msms`) — the item already carries `units: ms`, so the literal `ms` after `{ITEM.LASTVALUE}` was removed.
+- Before→after ("было → стало") display on the SPF/MX/DKIM "record changed" and DMARC "downgraded" triggers was fully broken: it used `{?last(text)}` (→ `*UNKNOWN*`) and `{ITEM.PREVVALUE}` (unsupported in event names/operational data — rendered as the literal macro and dropped the before/after tags). Zabbix has no native way to show a previous text value there, so the script now supplies the prior value via its cross-run cache.
+
+### Added
+- Script emits a `prev` block (`spf`, `mx`, `dkim`, `dmarc`) carrying the previously seen values, namespaced in the cache (`__snapshot__|<domain>`) so it never collides with DNSBL entries.
+- Four new dependent items — `mail.spf.record.prev`, `mail.mx.records.prev`, `mail.dkim.records.prev`, `mail.dmarc.policy.prev` — feed the before→after opdata/tags via the supported, text-capable `{ITEM.LASTVALUE}`. Change-trigger expressions place these display items first so the positional macros resolve unambiguously (Zabbix numbers `{ITEM.LASTVALUE<N>}` by function reference, not distinct item).
+
+### Changed
+- `save_cache()` now writes atomically (temp file + `os.replace`) so concurrent per-host external-check processes cannot corrupt the shared cache file.
+
 ## [0.1.46] - 2026-04-23
 
 ### Fixed

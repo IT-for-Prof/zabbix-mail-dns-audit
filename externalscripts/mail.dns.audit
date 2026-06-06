@@ -22,7 +22,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.46"
+VERSION = "0.1.47"
 
 DEFAULT_RESOLVER = "127.0.0.1"
 DEFAULT_TIMEOUT = 3.0
@@ -69,11 +69,19 @@ def load_cache(path: str) -> Dict[str, Dict]:
 
 
 def save_cache(path: str, data: Dict[str, Dict]) -> None:
+    # Atomic write: the cache file is shared by all hosts' concurrent
+    # external-check processes. Write to a per-PID temp file and os.replace()
+    # (atomic on POSIX) so a concurrent reader never sees a half-written file.
+    tmp = "{}.{}.tmp".format(path, os.getpid())
     try:
-        with open(path, "w", encoding="utf-8") as fh:
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=True)
+        os.replace(tmp, path)
     except Exception:
-        pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def build_resolver(nameserver: str, timeout: float, shuffle: bool = True) -> dns.resolver.Resolver:
@@ -859,6 +867,7 @@ def main() -> int:
         "spf": [],
         "spf_analysis": {},
         "snapshots": {},
+        "prev": {"spf": "", "mx": "", "dkim": "", "dmarc": ""},
         "dnssec": {"ds_present": False, "ad_flag": False},
         "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
         "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0},
@@ -1059,6 +1068,43 @@ def main() -> int:
             "ns_hash": _hash(ns_records),
             "soa": {"serial": soa_serial, "hash": _hash([soa_serial])},
         }
+
+        # --- Before→after change tracking ---------------------------------
+        # Zabbix event names / operational data cannot display an item's
+        # previous value ({ITEM.PREVVALUE} is unsupported there) and cannot
+        # render text via expression macros ({?last(...)} → *UNKNOWN*). So the
+        # script supplies the previously seen value (from its own cache) as a
+        # sibling field, exposed via dedicated .prev items and shown with the
+        # supported, text-capable {ITEM.LASTVALUE}. The cache key is namespaced
+        # so it never collides with the DNSBL "ip|zone|resolver" entries.
+        def _fmt_mx_disp(mxl: List[Dict]) -> str:
+            return ", ".join("{} {}".format(m.get("prio"), m.get("host")) for m in mxl)
+
+        def _fmt_dkim_disp(objs: List[Dict]) -> str:
+            out = []
+            for d in objs:
+                kb = d.get("key_bits", 0)
+                out.append("{}:{}-{}".format(
+                    d.get("selector", ""), d.get("k", ""),
+                    kb if isinstance(kb, int) and kb > 0 else "unknown"))
+            return ", ".join(out)
+
+        cur_disp = {
+            "spf": result["spf"][0] if result["spf"] else "",
+            "mx": _fmt_mx_disp(result["mx"]),
+            "dkim": _fmt_dkim_disp(result["dkim"].get("records", [])),
+            "dmarc": result["dmarc"].get("p", "") if isinstance(result.get("dmarc"), dict) else "",
+        }
+        snap_key = "__snapshot__|" + domain
+        prev_cached = cache.get(snap_key)
+        prev_disp = prev_cached if isinstance(prev_cached, dict) else {}
+        result["prev"] = {
+            "spf": prev_disp.get("spf", ""),
+            "mx": prev_disp.get("mx", ""),
+            "dkim": prev_disp.get("dkim", ""),
+            "dmarc": prev_disp.get("dmarc", ""),
+        }
+        cache[snap_key] = cur_disp
 
         dkim_selector_counts: Dict[str, int] = {}
         for rec in dkim_records:
