@@ -13,16 +13,70 @@ import json
 import os
 import random
 import re
+import signal
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-import dns.flags  # type: ignore
-import dns.resolver  # type: ignore
-import dns.exception  # type: ignore
-import dns.rcode  # type: ignore
+VERSION = "0.1.49"
 
-VERSION = "0.1.48"
+# Wall-clock budget (seconds) for the whole run, kept under the Zabbix
+# external-check Timeout so a stuck resolver produces a clean error instead of
+# the poller killing the script ("Timeout while executing a shell script").
+# Override per environment with MAIL_DNS_DEADLINE_SEC.
+DEFAULT_DEADLINE_SEC = 25
+
+
+def _emit_error(message: str, resolver_used: str = "") -> None:
+    """Print a minimal, schema-valid JSON envelope for fatal startup failures.
+
+    Guarantees Zabbix always receives parseable JSON carrying the meta.* fields
+    the dependent items and the 'DNS audit script error' trigger rely on —
+    instead of a raw Python traceback that would silently go NOTSUPPORTED."""
+    print(
+        json.dumps(
+            {
+                "meta": {
+                    "error": message,
+                    "version": VERSION,
+                    "timestamp": int(time.time()),
+                    "query_time_ms": 0,
+                    "resolver_used": resolver_used,
+                }
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+    )
+    sys.stdout.flush()  # flush explicitly: the deadline handler hard-exits
+
+
+try:
+    import dns.flags  # type: ignore
+    import dns.resolver  # type: ignore
+    import dns.exception  # type: ignore
+    import dns.rcode  # type: ignore
+except ImportError as exc:
+    _emit_error(
+        "missing Python dependency: {} — install 'python3-dnspython' "
+        "(or pip install dnspython)".format(exc)
+    )
+    sys.exit(0)
+
+
+_DEADLINE_RESOLVER = ""
+
+
+def _deadline_handler(signum, frame):  # noqa: ARG001
+    # Emit a clean error envelope and hard-exit. We do NOT raise: a raised
+    # exception would be swallowed by the many inner `except Exception` blocks
+    # in the query path, and signal.alarm() is one-shot, so the deadline would
+    # be lost. os._exit bypasses that and guarantees Zabbix gets the error.
+    _emit_error(
+        "total runtime deadline exceeded (resolver too slow or unreachable)",
+        resolver_used=_DEADLINE_RESOLVER,
+    )
+    os._exit(0)
 
 DEFAULT_RESOLVER = "127.0.0.1"
 DEFAULT_TIMEOUT = 3.0
@@ -702,6 +756,16 @@ def main() -> int:
         except Exception:
             return fallback
 
+    if "--selfcheck" in sys.argv:
+        print(
+            "selfcheck: OK version={} python={}.{}.{} dnspython={}".format(
+                VERSION,
+                sys.version_info[0], sys.version_info[1], sys.version_info[2],
+                getattr(dns, "__version__", "?"),
+            )
+        )
+        return 0
+
     parser = argparse.ArgumentParser(description="Mail DNS audit external check.", allow_abbrev=False)
     parser.add_argument("--version", action="version", version=VERSION)
     parser.add_argument("domain", help="Domain to audit")
@@ -754,6 +818,16 @@ def main() -> int:
                 setattr(args, fields_order[idx], val)
 
     start = time.time()
+
+    deadline = _to_int(os.environ.get("MAIL_DNS_DEADLINE_SEC", ""), DEFAULT_DEADLINE_SEC)
+    if deadline > 0:
+        try:
+            global _DEADLINE_RESOLVER
+            _DEADLINE_RESOLVER = args.resolver
+            signal.signal(signal.SIGALRM, _deadline_handler)
+            signal.alarm(deadline)
+        except (ValueError, OSError, AttributeError):
+            pass  # SIGALRM unavailable (non-main thread / non-POSIX)
 
     domain = args.domain.strip()
     dns_timeout = float(args.dns_timeout) if args.dns_timeout else DEFAULT_TIMEOUT
@@ -1158,6 +1232,11 @@ def main() -> int:
     except Exception as exc:  # pragma: no cover
         result["meta"]["error"] = str(exc)
 
+    try:
+        signal.alarm(0)  # disarm before cleanup so it can't fire during save/print
+    except (ValueError, OSError, AttributeError):
+        pass
+
     result["meta"]["query_time_ms"] = int((time.time() - start) * 1000)
 
     save_cache(CACHE_PATH, cache)
@@ -1166,5 +1245,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException as exc:  # never dump a raw traceback to Zabbix
+        _emit_error("fatal: {}".format(exc))
+        sys.exit(0)
 

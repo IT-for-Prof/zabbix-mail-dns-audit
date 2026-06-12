@@ -1,6 +1,18 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.49] - 2026-06-12
+
+### Fixed
+- A missing Python dependency (dnspython) no longer dumps a raw traceback that silently becomes a NOTSUPPORTED item with no useful alert. The `dns.*` imports are now guarded and emit a structured `{"meta":{"error":"missing Python dependency …"}}` envelope, so the **"DNS audit script error"** trigger fires immediately with a clear, actionable message. (Surfaced by a proxy where `python3-dnspython` was absent.)
+- A stuck/unreachable resolver no longer lets the script run past the Zabbix external-check `Timeout` and get killed ("Timeout while executing a shell script"). A total-runtime **deadline** (default 25s, override via env `MAIL_DNS_DEADLINE_SEC`) now emits a clean `meta.error` instead. The SIGALRM handler emits the envelope and hard-exits, so it can't be swallowed by inner `except` blocks.
+- Top-level guard around `main()`: any otherwise-uncaught exception (argument parsing, resolver construction) emits the JSON error envelope instead of a traceback. `_emit_error()` flushes stdout explicitly.
+
+### Added
+- `--selfcheck` flag — `mail.dns.audit --selfcheck` prints `selfcheck: OK version=… python=… dnspython=…` for post-deploy dependency verification.
+- `requirements.txt` (`dnspython>=2.0`).
+- Template: `mail.dns.error` JSONPath step now has a `CUSTOM_VALUE` error handler, so even a genuinely non-JSON script output (e.g. a traceback Zabbix captured) trips the "script error" trigger instead of going NOTSUPPORTED — and suppresses the misleading "version mismatch (running unknown)" warning via the existing trigger dependency.
+
 ## [0.1.48] - 2026-06-12
 
 ### Fixed

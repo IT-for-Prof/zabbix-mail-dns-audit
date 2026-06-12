@@ -1,0 +1,6 @@
+# Runtime dependency for externalscripts/mail.dns.audit
+# Install on every Zabbix server/proxy that executes the external check:
+#   apt install -y python3-dnspython        # Debian/Ubuntu (preferred)
+#   pip install dnspython                    # other distros / venv
+# Verify after install:  mail.dns.audit --selfcheck
+dnspython>=2.0

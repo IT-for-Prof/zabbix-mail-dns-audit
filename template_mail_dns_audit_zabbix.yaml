@@ -9,7 +9,7 @@ zabbix_export:
       name: 'Template Mail DNS Audit Zabbix'
       vendor:
         name: itforprof.com
-        version: 0.1.48
+        version: 0.1.49
       description: |
         Comprehensive Mail DNS Posture Audit.
 
@@ -626,6 +626,8 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.meta.error
+              error_handler: CUSTOM_VALUE
+              error_handler_params: 'non-JSON script output (crashed or killed) — check the external script and its dependencies'
             - type: JAVASCRIPT
               parameters:
                 - 'return (value === "null" || value === null) ? "" : value;'
@@ -2083,7 +2085,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.48
+          value: 0.1.49
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d

@@ -297,7 +297,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.48` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.49` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -500,6 +500,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.49** — Robustness & informativeness: a missing `dnspython` dependency no longer dumps a raw traceback (silent NOTSUPPORTED) but a structured `meta.error`, so the "DNS audit script error" trigger fires immediately with a clear message; added a total-runtime deadline (25s, env `MAIL_DNS_DEADLINE_SEC`) so a stuck resolver yields a clean error instead of "Timeout while executing a shell script"; top-level exception guard in `main()`; `--selfcheck` flag for post-install dependency verification; `requirements.txt`; template `mail.dns.error` now has an error handler so non-JSON output also trips the error trigger
 - **v0.1.48** — DNSSEC: set the EDNS DO bit — `ad_flag` was always `False` because a validating resolver never returns the AD flag without a DNSSEC request (fixes #1, thanks @Salzi); the `{$DNS_TIMEOUT_SEC}` timeout now applies on all resolver paths (previously ignored when `{$DNS_RESOLVER}` is empty); `ad_flag` now also incorporates the apex `MX` and `DS` answers instead of only the MX hosts' A/AAAA — signed domains whose mail lives in an unsigned provider zone (Microsoft 365 / Proofpoint, e.g. `nasa.gov`) no longer report a false `False`
 - **v0.1.47** — Triggers: problem names for "DNSBL check failed" and "MX IP listed in DNSBL" (`*UNKNOWN*` → `{ITEM.LASTVALUE<N>}`), removed doubled unit in "DNS query slow"; before→after on SPF/MX/DKIM/DMARC change triggers now works via the script's cross-run cache; atomic cache writes
 - **v0.1.46** — SPF: fixed qualifier parsing per RFC 7208 §4.6.1 (`+mx`, `+a`, `-include:...` were silently ignored); fixed `all` falsely matching the `a` mechanism; default DNS resolver changed to `127.0.0.1`
