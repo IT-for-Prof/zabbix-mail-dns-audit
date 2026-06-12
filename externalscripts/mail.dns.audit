@@ -95,8 +95,13 @@ def build_resolver(nameserver: str, timeout: float, shuffle: bool = True) -> dns
         if shuffle:
             random.shuffle(servers)
         resolver.nameservers = servers
-        resolver.lifetime = timeout
-        resolver.timeout = timeout
+
+    resolver.lifetime = timeout
+    resolver.timeout = timeout
+
+    #set DO flag
+    resolver.use_edns(0, dns.flags.DO, 4096)
+    
     return resolver
 
 
