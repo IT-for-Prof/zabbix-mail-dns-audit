@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.48] - 2026-06-12
+
+### Fixed
+- DNSSEC `ad_flag` was structurally always `False`: the resolver never set the EDNS DO bit, so a validating recursive resolver never returned the AD (Authenticated Data) flag, and `query_records()` always read it as `0`. `build_resolver()` now calls `resolver.use_edns(0, dns.flags.DO, 4096)`. (Fixes #1, thanks @Salzi.)
+- The configured DNS timeout (`{$DNS_TIMEOUT_SEC}`) was ignored on the system-config resolver path (empty `{$DNS_RESOLVER}`): `lifetime`/`timeout` were set only inside the custom-nameservers branch, so the default path silently used dnspython defaults (5s/2s). They are now applied on every code path. (Fixes #1, thanks @Salzi.)
+- `dnssec.ad_flag` aggregation no longer misses DNSSEC-signed domains whose mail is hosted in an unsigned provider zone (e.g. Microsoft 365 / Proofpoint). It was OR-ed only from the MX hosts' A/AAAA lookups — which belong to the provider's zone — so a signed apex with an unsigned MX host (e.g. `nasa.gov`) read `False`. It now also incorporates the apex `MX` answer and the parent-signed `DS` answer.
+
 ## [0.1.47] - 2026-06-06
 
 ### Fixed

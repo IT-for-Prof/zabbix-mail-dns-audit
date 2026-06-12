@@ -297,7 +297,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.46` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.48` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -500,6 +500,8 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.48** — DNSSEC: set the EDNS DO bit — `ad_flag` was always `False` because a validating resolver never returns the AD flag without a DNSSEC request (fixes #1, thanks @Salzi); the `{$DNS_TIMEOUT_SEC}` timeout now applies on all resolver paths (previously ignored when `{$DNS_RESOLVER}` is empty); `ad_flag` now also incorporates the apex `MX` and `DS` answers instead of only the MX hosts' A/AAAA — signed domains whose mail lives in an unsigned provider zone (Microsoft 365 / Proofpoint, e.g. `nasa.gov`) no longer report a false `False`
+- **v0.1.47** — Triggers: problem names for "DNSBL check failed" and "MX IP listed in DNSBL" (`*UNKNOWN*` → `{ITEM.LASTVALUE<N>}`), removed doubled unit in "DNS query slow"; before→after on SPF/MX/DKIM/DMARC change triggers now works via the script's cross-run cache; atomic cache writes
 - **v0.1.46** — SPF: fixed qualifier parsing per RFC 7208 §4.6.1 (`+mx`, `+a`, `-include:...` were silently ignored); fixed `all` falsely matching the `a` mechanism; default DNS resolver changed to `127.0.0.1`
 - **v0.1.45** — DNSBL cache: errors (CHECK FAILED, POLICY/ERROR) now expire after 120s instead of full TTL; switching DNS resolver no longer serves stale results — resolver is now part of the cache key
 - **v0.1.44** — DKIM: `rsa-unknown` instead of `rsa-0`; `dmarc_before`/`dmarc_after` tags on policy downgrade trigger; `vendor:` block with author in Zabbix 7.0 native template metadata

@@ -22,7 +22,7 @@ import dns.resolver  # type: ignore
 import dns.exception  # type: ignore
 import dns.rcode  # type: ignore
 
-VERSION = "0.1.47"
+VERSION = "0.1.48"
 
 DEFAULT_RESOLVER = "127.0.0.1"
 DEFAULT_TIMEOUT = 3.0
@@ -99,9 +99,9 @@ def build_resolver(nameserver: str, timeout: float, shuffle: bool = True) -> dns
     resolver.lifetime = timeout
     resolver.timeout = timeout
 
-    #set DO flag
+    # Enable the EDNS DO bit so a validating resolver returns the DNSSEC AD flag
     resolver.use_edns(0, dns.flags.DO, 4096)
-    
+
     return resolver
 
 
@@ -901,7 +901,10 @@ def main() -> int:
     }
 
     try:
-        mx_records, _, ad_flag = query_records(resolver, domain, "MX")
+        mx_records, _, ad_flag_mx = query_records(resolver, domain, "MX")
+        # Apex MX answer is authenticated → the domain's own zone is DNSSEC-signed,
+        # even when the MX hosts themselves live in an unsigned provider zone.
+        result["dnssec"]["ad_flag"] = result["dnssec"]["ad_flag"] or ad_flag_mx
         mx_list = []
         for mx in mx_records:
             parts = mx.split()
@@ -957,8 +960,11 @@ def main() -> int:
         )
 
         try:
-            ds_records, _, _ = query_records(resolver, domain, "DS")
+            ds_records, _, ad_flag_ds = query_records(resolver, domain, "DS")
             result["dnssec"]["ds_present"] = bool(ds_records)
+            # DS lives in (and is signed by) the parent zone — an authenticated
+            # DS answer confirms the secure delegation to this domain.
+            result["dnssec"]["ad_flag"] = result["dnssec"]["ad_flag"] or ad_flag_ds
         except dns.exception.DNSException:
             result["dnssec"]["ds_present"] = False
 
