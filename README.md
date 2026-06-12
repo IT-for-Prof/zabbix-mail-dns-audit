@@ -164,11 +164,16 @@ chown zabbix:zabbix /usr/lib/zabbix/externalscripts/mail.dns.audit
 # Проверка наличия файла
 ls -l /usr/lib/zabbix/externalscripts/mail.dns.audit
 
+# Проверка зависимостей (версия скрипта, Python, dnspython)
+/usr/lib/zabbix/externalscripts/mail.dns.audit --selfcheck
+
 # Тест работоспособности
 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com 8.8.8.8 3
 ```
 
-> **Zabbix Proxy:** Если хосты мониторятся через **Zabbix Proxy**, разверните скрипт и Python-зависимости на **прокси-сервере**, а не на Zabbix Server. Внешние скрипты выполняются на той машине (сервер или прокси), которая мониторит хост. Шаги установки одинаковы для каждого прокси.
+> **Zabbix Proxy:** Если хосты мониторятся через **Zabbix Proxy**, разверните скрипт и Python-зависимости на **прокси-сервере**, а не на Zabbix Server. Внешние скрипты выполняются на той машине (сервер или прокси), которая мониторит хост. Шаги установки одинаковы для каждого прокси. После установки на каждой машине запустите `--selfcheck`.
+
+> **Таймаут выполнения:** скрипт ограничивает общее время работы дедлайном (по умолчанию 25 c, переменная окружения `MAIL_DNS_DEADLINE_SEC`), который держится **ниже** значения `Timeout` внешних проверок Zabbix (по умолчанию 30 c). Зависший резолвер даёт понятную ошибку (`meta.error`) вместо «Timeout while executing a shell script». Если вы меняете `Timeout` в `zabbix_server.conf`/`zabbix_proxy.conf`, задайте `MAIL_DNS_DEADLINE_SEC ≈ Timeout − 5`.
 
 ### Шаг 3: Загрузка шаблона и импорт
 
@@ -297,7 +302,7 @@ wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM (через запятую, без `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.49` | Версия шаблона |
+| `{$TEMPLATE_VERSION}` | `0.1.50` | Версия шаблона |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
 ## Использование
@@ -500,6 +505,7 @@ Triggers & Alerts
 Полная история: [CHANGELOG.md](CHANGELOG.md)
 
 Последние обновления:
+- **v0.1.50** — Конверты ошибок теперь содержат полную структуру результата (а не только `meta`): при ошибке запуска/дедлайне/исключении ~35 зависимых элементов больше не уходят в NOTSUPPORTED — скелет вынесен в единый `_default_result()`, ошибка резолвит все JSONPath (заполнен только `meta.error`), триггер «DNS audit script error» по-прежнему срабатывает; Ctrl-C (`KeyboardInterrupt`) пробрасывается; в README описана связь `MAIL_DNS_DEADLINE_SEC` ↔ Zabbix `Timeout`
 - **v0.1.49** — Надёжность и информативность: отсутствие зависимости `dnspython` больше не выдаёт сырой traceback (молчаливый NOTSUPPORTED), а структурированный `meta.error` — триггер «DNS audit script error» срабатывает сразу с понятным сообщением; добавлен общий дедлайн выполнения (25с, env `MAIL_DNS_DEADLINE_SEC`) — зависший резолвер даёт чистую ошибку вместо «Timeout while executing a shell script»; верхнеуровневый перехват исключений в `main()`; флаг `--selfcheck` для проверки зависимостей после установки; `requirements.txt`; в шаблоне у `mail.dns.error` добавлен обработчик ошибок (не-JSON вывод тоже взводит триггер ошибки)
 - **v0.1.48** — DNSSEC: установлен бит EDNS DO — флаг `ad_flag` ранее был всегда `False`, т.к. валидирующий резолвер не возвращал флаг AD без запроса DNSSEC (исправление #1, спасибо @Salzi); таймаут `{$DNS_TIMEOUT_SEC}` теперь применяется на всех путях резолвера (раньше игнорировался при пустом `{$DNS_RESOLVER}`); `ad_flag` теперь учитывает ответы apex `MX` и `DS`, а не только A/AAAA MX-хостов — подписанные домены с почтой во внешней неподписанной зоне (Microsoft 365 / Proofpoint, напр. `nasa.gov`) больше не показывают ложный `False`
 - **v0.1.47** — Триггеры: имена проблем «DNSBL check failed» и «MX IP listed in DNSBL» (`*UNKNOWN*` → `{ITEM.LASTVALUE<N>}`), убрана задвоенная единица в «DNS query slow»; «было → стало» на триггерах изменения SPF/MX/DKIM/DMARC теперь работает через кросс-запусковый кэш скрипта; атомарная запись кэша

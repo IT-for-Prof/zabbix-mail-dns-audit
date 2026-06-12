@@ -164,11 +164,16 @@ chown zabbix:zabbix /usr/lib/zabbix/externalscripts/mail.dns.audit
 # Check file exists
 ls -l /usr/lib/zabbix/externalscripts/mail.dns.audit
 
+# Check dependencies (script version, Python, dnspython)
+/usr/lib/zabbix/externalscripts/mail.dns.audit --selfcheck
+
 # Test functionality
 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com 8.8.8.8 3
 ```
 
-> **Zabbix Proxy:** If hosts are monitored by a **Zabbix Proxy**, deploy the script and Python dependencies on the **proxy server** — not the Zabbix Server. External check items run on whichever machine (server or proxy) monitors the host. The same installation steps apply to each proxy.
+> **Zabbix Proxy:** If hosts are monitored by a **Zabbix Proxy**, deploy the script and Python dependencies on the **proxy server** — not the Zabbix Server. External check items run on whichever machine (server or proxy) monitors the host. The same installation steps apply to each proxy. Run `--selfcheck` on each machine after install.
+
+> **Execution timeout:** the script caps its total runtime with a deadline (default 25s, env `MAIL_DNS_DEADLINE_SEC`) kept **below** the Zabbix external-check `Timeout` (default 30s), so a stuck resolver yields a clear `meta.error` instead of "Timeout while executing a shell script". If you change `Timeout` in `zabbix_server.conf`/`zabbix_proxy.conf`, set `MAIL_DNS_DEADLINE_SEC ≈ Timeout − 5`.
 
 ### Step 3: Download Template and Import
 
@@ -297,7 +302,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.49` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.50` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -500,6 +505,7 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.50** — Error envelopes now emit the full result skeleton (not just `meta`): a startup/deadline/fatal error no longer flips ~35 dependent items to NOTSUPPORTED — the skeleton is factored into a single `_default_result()`, so an error resolves all dependent JSONPaths (only `meta.error` set) while the "DNS audit script error" trigger still fires; Ctrl-C (`KeyboardInterrupt`) is re-raised; documented the `MAIL_DNS_DEADLINE_SEC` ↔ Zabbix `Timeout` relationship
 - **v0.1.49** — Robustness & informativeness: a missing `dnspython` dependency no longer dumps a raw traceback (silent NOTSUPPORTED) but a structured `meta.error`, so the "DNS audit script error" trigger fires immediately with a clear message; added a total-runtime deadline (25s, env `MAIL_DNS_DEADLINE_SEC`) so a stuck resolver yields a clean error instead of "Timeout while executing a shell script"; top-level exception guard in `main()`; `--selfcheck` flag for post-install dependency verification; `requirements.txt`; template `mail.dns.error` now has an error handler so non-JSON output also trips the error trigger
 - **v0.1.48** — DNSSEC: set the EDNS DO bit — `ad_flag` was always `False` because a validating resolver never returns the AD flag without a DNSSEC request (fixes #1, thanks @Salzi); the `{$DNS_TIMEOUT_SEC}` timeout now applies on all resolver paths (previously ignored when `{$DNS_RESOLVER}` is empty); `ad_flag` now also incorporates the apex `MX` and `DS` answers instead of only the MX hosts' A/AAAA — signed domains whose mail lives in an unsigned provider zone (Microsoft 365 / Proofpoint, e.g. `nasa.gov`) no longer report a false `False`
 - **v0.1.47** — Triggers: problem names for "DNSBL check failed" and "MX IP listed in DNSBL" (`*UNKNOWN*` → `{ITEM.LASTVALUE<N>}`), removed doubled unit in "DNS query slow"; before→after on SPF/MX/DKIM/DMARC change triggers now works via the script's cross-run cache; atomic cache writes

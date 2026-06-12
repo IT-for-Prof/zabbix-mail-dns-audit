@@ -1,6 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.50] - 2026-06-12
+
+### Fixed
+- Error envelopes now emit the **full default result skeleton** (every key the dependent items read), not just `meta`. Previously a startup/deadline/fatal error left ~35 dependent items (those without a preprocessing error handler) flipping to NOTSUPPORTED on every poll. The default skeleton is now factored into a single `_default_result()` used by both the normal run and `_emit_error()`, so an error resolves all dependent JSONPaths (only `meta.error` is populated) while the "DNS audit script error" trigger still fires. (Follow-up to a code review of 0.1.49.)
+
+### Changed
+- Top-level guard re-raises `KeyboardInterrupt` (alongside `SystemExit`) so a manual Ctrl-C keeps conventional behaviour; only genuinely unexpected exceptions are converted to the JSON error envelope.
+- Documented the relationship between `MAIL_DNS_DEADLINE_SEC` (default 25s) and the Zabbix external-check `Timeout` (default 30s) in the README.
+
 ## [0.1.49] - 2026-06-12
 
 ### Fixed

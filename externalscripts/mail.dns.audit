@@ -18,7 +18,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-VERSION = "0.1.49"
+VERSION = "0.1.50"
 
 # Wall-clock budget (seconds) for the whole run, kept under the Zabbix
 # external-check Timeout so a stuck resolver produces a clean error instead of
@@ -27,27 +27,57 @@ VERSION = "0.1.49"
 DEFAULT_DEADLINE_SEC = 25
 
 
-def _emit_error(message: str, resolver_used: str = "") -> None:
-    """Print a minimal, schema-valid JSON envelope for fatal startup failures.
+def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = None) -> Dict:
+    """The full default result skeleton — every key a dependent item reads.
 
-    Guarantees Zabbix always receives parseable JSON carrying the meta.* fields
-    the dependent items and the 'DNS audit script error' trigger rely on —
-    instead of a raw Python traceback that would silently go NOTSUPPORTED."""
-    print(
-        json.dumps(
-            {
-                "meta": {
-                    "error": message,
-                    "version": VERSION,
-                    "timestamp": int(time.time()),
-                    "query_time_ms": 0,
-                    "resolver_used": resolver_used,
-                }
-            },
-            ensure_ascii=True,
-            separators=(",", ":"),
-        )
-    )
+    Single source of the output schema, used both for the normal run and for
+    error envelopes, so a failure still resolves all dependent JSONPaths (only
+    meta.error is populated) instead of flipping ~35 items to NOTSUPPORTED."""
+    return {
+        "mx": [],
+        "mx_cname_count": 0,
+        "spf": [],
+        "spf_analysis": {},
+        "snapshots": {},
+        "prev": {"spf": "", "mx": "", "dkim": "", "dmarc": ""},
+        "dnssec": {"ds_present": False, "ad_flag": False},
+        "dnsbl": {"checked_ips": [], "zones": dnsbl_zones or [], "entries": [], "listed": [], "listed_count": 0},
+        "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0},
+        "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
+        "bimi": {"present": False, "txt": []},
+        "mail_client_config": {
+            "autoconfig": {"present": False, "type": "MISSING", "records": []},
+            "autodiscover": {"present": False, "type": "MISSING", "records": []},
+            "autodiscover_srv": {"present": False, "records": []},
+        },
+        "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
+        "duplicates": {
+            "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
+            "dmarc": {"has_duplicates": False, "count": 0},
+            "dkim": {"has_duplicates": False, "selectors": []},
+            "ns": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
+            "soa": {"has_duplicates": False, "count": 0},
+        },
+        "meta": {
+            "resolver_used": resolver_used,
+            "query_time_ms": 0,
+            "timestamp": int(time.time()),
+            "error": "",
+            "version": VERSION,
+        },
+    }
+
+
+def _emit_error(message: str, resolver_used: str = "") -> None:
+    """Print a full, schema-valid JSON result with meta.error populated.
+
+    Used for fatal failures (missing dependency, runtime deadline, otherwise
+    uncaught exceptions). Emitting the complete default skeleton — not just
+    meta — keeps every dependent item parseable instead of NOTSUPPORTED, while
+    the 'DNS audit script error' trigger fires on the populated meta.error."""
+    result = _default_result(resolver_used)
+    result["meta"]["error"] = message
+    print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
     sys.stdout.flush()  # flush explicitly: the deadline handler hard-exits
 
 
@@ -940,39 +970,7 @@ def main() -> int:
         print(json.dumps(simulated, ensure_ascii=True, separators=(",", ":")))
         return 0
 
-    result = {
-        "mx": [],
-        "mx_cname_count": 0,
-        "spf": [],
-        "spf_analysis": {},
-        "snapshots": {},
-        "prev": {"spf": "", "mx": "", "dkim": "", "dmarc": ""},
-        "dnssec": {"ds_present": False, "ad_flag": False},
-        "dnsbl": {"checked_ips": [], "zones": dnsbl_zones, "entries": [], "listed": [], "listed_count": 0},
-        "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0},
-        "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
-        "bimi": {"present": False, "txt": []},
-        "mail_client_config": {
-            "autoconfig": {"present": False, "type": "MISSING", "records": []},
-            "autodiscover": {"present": False, "type": "MISSING", "records": []},
-            "autodiscover_srv": {"present": False, "records": []},
-        },
-        "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
-        "duplicates": {
-            "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
-            "dmarc": {"has_duplicates": False, "count": 0},
-            "dkim": {"has_duplicates": False, "selectors": []},
-            "ns": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
-            "soa": {"has_duplicates": False, "count": 0},
-        },
-        "meta": {
-            "resolver_used": args.resolver,
-            "query_time_ms": 0,
-            "timestamp": int(time.time()),
-            "error": "",
-            "version": VERSION,
-        },
-    }
+    result = _default_result(args.resolver, dnsbl_zones)
 
     try:
         mx_records, _, ad_flag_mx = query_records(resolver, domain, "MX")
@@ -1247,8 +1245,8 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except SystemExit:
-        raise
+    except (SystemExit, KeyboardInterrupt):
+        raise  # argparse exit / Ctrl-C: keep conventional behaviour
     except BaseException as exc:  # never dump a raw traceback to Zabbix
         _emit_error("fatal: {}".format(exc))
         sys.exit(0)
