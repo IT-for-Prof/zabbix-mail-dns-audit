@@ -261,9 +261,9 @@ All parameters are configured via template macros in Zabbix:
 | Macro | Value | Description |
 |-------|-------|-------------|
 | `{$DNS_RESOLVER}` | (empty) | Resolver IPs (comma-separated). Empty = system |
-| `{$DNS_TIMEOUT_SEC}` | `3` | DNS query timeout (seconds) |
+| `{$DNS_TIMEOUT_SEC}` | `10` | Timeout for a single DNS query (seconds). This is the cost of one hung lookup: at 3s a transient failure was short enough to look like an authoritative "no such record" |
 | `{$DNS_SHUFFLE}` | `1` | Shuffle resolvers (1/0) |
-| `{$DNS_SLOW_MS}` | `3000` | Slow DNS threshold (ms) |
+| `{$DNS_SLOW_MS}` | `12000` | Slow DNS threshold (ms). Must exceed `{$DNS_TIMEOUT_SEC}`, otherwise the trigger degenerates into a duplicate of "one lookup timed out" |
 
 ### SPF and Checks
 
@@ -277,7 +277,8 @@ All parameters are configured via template macros in Zabbix:
 
 | Macro | Value | Description |
 |-------|-------|-------------|
-| `{$DNSBL_ZONES}` | `zen.spamhaus.org,bl.spamcop.net` | Zones to check |
+| `{$DNSBL_ZONES}` | `zen.spamhaus.org,b.barracudacentral.org` | Zones to check. Barracuda requires free registration of the querying IPs |
+| `{$DNSBL_TEST_IP}` | `127.0.0.2` | Canary address: a live blocklist must return it. Empty disables the self-test |
 | `{$DNSBL_CACHE_TTL_SEC}` | `1200` | DNSBL cache TTL (seconds) |
 | `{$DNSBL_MAX_IP}` | `1` | Max IPs for DNSBL |
 | `{$MAX_MX_CHECK}` | `5` | Max MX to check |
@@ -302,7 +303,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.50` | Template version |
+| `{$TEMPLATE_VERSION}` | `0.1.52` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
 ## Usage
@@ -360,7 +361,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 ```bash
 # Check test IP status in DNSBL
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org,bl.spamcop.net" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org,b.barracudacentral.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
   --dnsbl-test-ip 127.0.0.2
 ```
 
@@ -505,6 +506,8 @@ Triggers & Alerts
 Full history: [CHANGELOG.md](CHANGELOG.md)
 
 Recent updates:
+- **v0.1.52** — Absence can no longer be claimed from an incomplete look: the script counts failed DNS lookups (`meta.lookup_failures`) and the HIGH triggers "No MX records found" and "DKIM record missing" are now gated on `lookup_failures=0`. An unreachable resolver used to produce two false HIGH pages per host — reproduced: 16 failed lookups, empty MX and DKIM, while `meta.error` stayed empty so the "DNS audit script error" dependency did not protect them. A new trigger announces that absence checks are currently suppressed, so they never go blind silently. The FCrDNS trigger gained the `min(...,#2)` filter. A value of `-1` on `mail.dns.lookup_failures` means "not measured" and is deliberately distinct from `0`
+- **v0.1.51** — A transient DNS failure is no longer reported as a missing PTR record: `query_records()` collapsed `NXDOMAIN`, `NoAnswer`, `Timeout` and `NoNameservers` into the same empty list and `check_ptr_fcrdns()` read that as `MISSING` — 13 false HIGH alerts in 33 days on a domain whose PTR was present throughout. Added `query_records_ex()` carrying the failure reason; only `NXDOMAIN`/`NoAnswer` count as authoritative absence. The same fix applies to the forward A lookup. The error skeleton gained the `ptr` and `dmarc` roots (`lld_*` deliberately omitted — empty `data` starts the deletion clock on discovered entities). New items: PTR error count, the affected IP list, and a DNSBL zone liveness self-test. First test in the repo: `tests/test_ptr_states.py`
 - **v0.1.50** — Error envelopes now emit the full result skeleton (not just `meta`): a startup/deadline/fatal error no longer flips ~35 dependent items to NOTSUPPORTED — the skeleton is factored into a single `_default_result()`, so an error resolves all dependent JSONPaths (only `meta.error` set) while the "DNS audit script error" trigger still fires; Ctrl-C (`KeyboardInterrupt`) is re-raised; documented the `MAIL_DNS_DEADLINE_SEC` ↔ Zabbix `Timeout` relationship
 - **v0.1.49** — Robustness & informativeness: a missing `dnspython` dependency no longer dumps a raw traceback (silent NOTSUPPORTED) but a structured `meta.error`, so the "DNS audit script error" trigger fires immediately with a clear message; added a total-runtime deadline (25s, env `MAIL_DNS_DEADLINE_SEC`) so a stuck resolver yields a clean error instead of "Timeout while executing a shell script"; top-level exception guard in `main()`; `--selfcheck` flag for post-install dependency verification; `requirements.txt`; template `mail.dns.error` now has an error handler so non-JSON output also trips the error trigger
 - **v0.1.48** — DNSSEC: set the EDNS DO bit — `ad_flag` was always `False` because a validating resolver never returns the AD flag without a DNSSEC request (fixes #1, thanks @Salzi); the `{$DNS_TIMEOUT_SEC}` timeout now applies on all resolver paths (previously ignored when `{$DNS_RESOLVER}` is empty); `ad_flag` now also incorporates the apex `MX` and `DS` answers instead of only the MX hosts' A/AAAA — signed domains whose mail lives in an unsigned provider zone (Microsoft 365 / Proofpoint, e.g. `nasa.gov`) no longer report a false `False`

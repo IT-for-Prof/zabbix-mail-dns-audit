@@ -1,6 +1,37 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [0.1.52] - 2026-07-27
+
+### Fixed
+- "Record is missing" was still claimable from a run that never saw the record. With an unreachable resolver every lookup returns empty, so `mail.mx.count` reads 0 and `mail.dkim.present` reads 0 — two **HIGH** alerts per host asserting the domain had lost its MX and DKIM records. `meta.error` stays empty in that scenario, so the "DNS audit script error" dependency did not suppress them. Reproduced against a black-holed resolver: 16 failed lookups, both records reported absent. The script now counts failed lookups and both triggers require `mail.dns.lookup_failures=0` — absence is only asserted from a complete look. This is the PTR fix from 0.1.51 generalised to every check, without touching the 25 existing `query_records()` call sites.
+- The "MX PTR FCrDNS failed" trigger fired on a single sample; it now requires two consecutive polls, matching the PTR-missing and DNSBL triggers.
+- Removed a dead `noanswer` variable in the DNSBL branch (assigned in three places, read nowhere). The NODATA outcome it reached for already falls through to `CHECK FAILED`; that intent is now a comment instead of unused state.
+
+### Added
+- `meta.lookup_failures` and the `mail.dns.lookup_failures` item. `-1` means the running script predates the field — deliberately distinct from `0`, so the absence guards stay closed on an unmeasured run rather than opening.
+- Trigger "DNS lookups failing — absence checks suppressed". Gating the absence triggers without announcing it would have made them go blind silently, which is the failure mode this whole release is about.
+
+### Note for contributors
+- The external check is named `mail.dns.audit` with no `.py` suffix, so a bare `ruff check .` walks the tree, lints only `tests/` and reports "All checks passed" having never opened the 1200-line script. Lint it explicitly — `ruff check externalscripts/mail.dns.audit` — or add `extend-include = ["externalscripts/mail.dns.audit"]` to a local ruff config. The dead variable fixed above was invisible to the bare command.
+
+## [0.1.51] - 2026-07-27
+
+### Fixed
+- A transient DNS failure on the PTR lookup was reported as `status: "MISSING"` — i.e. as an authoritative "this domain has no PTR record" — and raised a HIGH page. `query_records()` collapsed four semantically distinct outcomes (`NXDOMAIN`, `NoAnswer`, `Timeout`, `NoNameservers`) into the same empty list, because its 3-tuple contract had no channel for *why* the result was empty; `check_ptr_fcrdns()` then read empty as MISSING, leaving its `ERROR` branch unreachable (output always showed `"missing":1,"errors":0`). Only NXDOMAIN/NoAnswer now mean MISSING; a failed lookup yields `ERROR` with the reason. Observed as 13 false HIGH alerts in 33 days on a domain whose PTR was present throughout, each one coinciding with a "DNS query slow" event — the signature of a query burning the full 3s `resolver.lifetime`.
+
+- The forward A lookup inside `check_ptr_fcrdns()` had the same defect one line below the PTR one: a timeout there produced `NO_FCRDNS` — an assertion that the forward record disagrees with the PTR — feeding a trigger that carries no consecutive-poll filter at all. It now yields `ERROR` like the PTR leg.
+- The error envelope skeleton introduced in 0.1.50 was incomplete: `ptr` and `dmarc` were missing, so on any fatal error every `$.ptr.*` and `$.dmarc.*` item with a default error handler went NOTSUPPORTED — including the new `mail.ptr.errors`, i.e. the visibility mechanism disappeared exactly when the script failed hardest. Both roots are now in the skeleton. The `lld_*` roots are deliberately still absent: a discovery rule fed `{"data": []}` asserts "nothing exists" and starts the 30d deletion clock on everything it discovered, whereas NOTSUPPORTED asserts nothing.
+
+### Added
+- `query_records_ex()` returns the failure reason alongside the records. `query_records()` is now a thin wrapper preserving the existing 3-tuple form, so all 25 existing call sites are untouched; the other checks (MX/SPF/DMARC/DKIM/NS/SOA) can adopt the tri-state later by switching to `_ex`.
+- `tests/test_ptr_states.py` — first test in the repo. Asserts the exception→status mapping across all four DNS failure classes plus the OK/NO_FCRDNS/GENERIC paths, and pins the `query_records()` 3-tuple contract. No framework: `python3 tests/test_ptr_states.py`.
+- Template: `mail.ptr.errors` item (`$.ptr.errors`), so a lookup failure stays visible instead of turning a loud false positive into a silent blind spot. The value was already computed by the script and never surfaced.
+- `ptr.missing_details` / `ptr.nofcrdns_details` — the affected IPs, not just the count. With several MX records (3 of the 11 monitored domains have two) `count=1` does not say which address is broken. Zabbix expression macros cannot render text, so the trigger reads these via `{ITEM.LASTVALUE<n>}`, the same shape already used by the DNSBL details item. Empty renders as `*NONE*` rather than a blank, so a quiet trigger name is not mistaken for a broken template.
+
+### Changed
+- Template: the "MX PTR missing" trigger now requires two consecutive bad polls (`min(...,#2)>0`) and is AVERAGE rather than HIGH. Same noise filter already applied to the DNSBL trigger in 0.1.47, for the same reason; missing reverse DNS degrades deliverability but is not an outage. The estate's escalation-step filter cannot help here — it is time-based (5 min) while an hourly-polled item holds a false state for a full hour.
+
 ## [0.1.50] - 2026-06-12
 
 ### Fixed

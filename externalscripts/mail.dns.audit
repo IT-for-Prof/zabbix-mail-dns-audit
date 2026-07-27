@@ -18,7 +18,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-VERSION = "0.1.50"
+VERSION = "0.1.52"
 
 # Wall-clock budget (seconds) for the whole run, kept under the Zabbix
 # external-check Timeout so a stuck resolver produces a clean error instead of
@@ -41,6 +41,30 @@ def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = 
         "snapshots": {},
         "prev": {"spf": "", "mx": "", "dkim": "", "dmarc": ""},
         "dnssec": {"ds_present": False, "ad_flag": False},
+        "ptr": {
+            "entries": [],
+            "missing": 0,
+            "no_fcrdns": 0,
+            "generic": 0,
+            "errors": 0,
+            "checked": 0,
+            "missing_details": "*NONE*",
+            "nofcrdns_details": "*NONE*",
+        },
+        "dmarc": {
+            "present": False,
+            "raw": "",
+            "p": "",
+            "sp": None,
+            "rua": "",
+            "pct": None,
+            "adkim": "",
+            "aspf": "",
+        },
+        # The lld_* roots are deliberately absent. A discovery rule fed {"data": []}
+        # asserts "nothing exists" and starts the 30d deletion clock on everything it
+        # discovered; going NOTSUPPORTED asserts nothing and is harmless. An outage is
+        # already covered by the "script not running (nodata 3h)" trigger.
         "dnsbl": {"checked_ips": [], "zones": dnsbl_zones or [], "entries": [], "listed": [], "listed_count": 0},
         "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0},
         "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
@@ -63,6 +87,7 @@ def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = 
             "query_time_ms": 0,
             "timestamp": int(time.time()),
             "error": "",
+            "lookup_failures": 0,
             "version": VERSION,
         },
     }
@@ -95,6 +120,13 @@ except ImportError as exc:
 
 
 _DEADLINE_RESOLVER = ""
+
+# How many DNS lookups failed this run (timeout, SERVFAIL, ...) as opposed to
+# answering "there is nothing here". A module-level counter is fine: this is a
+# single-shot CLI process, not a service. Exposed as meta.lookup_failures so a
+# trigger can refuse to claim a record is ABSENT on a run where we demonstrably
+# could not see the whole picture.
+_LOOKUP_FAILURES = 0
 
 
 def _deadline_handler(signum, frame):  # noqa: ARG001
@@ -189,15 +221,24 @@ def build_resolver(nameserver: str, timeout: float, shuffle: bool = True) -> dns
     return resolver
 
 
-def query_records(
+def query_records_ex(
     resolver: dns.resolver.Resolver, name: str, rdtype: str
-) -> Tuple[List[str], Optional[int], bool]:
+) -> Tuple[List[str], Optional[int], bool, Optional[str]]:
+    """As query_records(), plus *why* the record list came back empty.
+
+    The fourth element is None when the empty result is an answer -- NXDOMAIN or
+    NODATA, i.e. the zone authoritatively says there is nothing here -- and a short
+    reason string when the lookup itself failed (timeout, SERVFAIL, ...).
+
+    Callers that would otherwise report "no such record" for what is really "could
+    not find out" must use this variant; query_records() cannot tell them apart.
+    """
     try:
         answer = resolver.resolve(name, rdtype, raise_on_no_answer=False, search=False)
         ad_flag = bool(answer.response.flags & dns.flags.AD)
         ttl = answer.rrset.ttl if answer.rrset else None
         if not answer.rrset:
-            return [], ttl, ad_flag
+            return [], ttl, ad_flag, None
         records: List[str] = []
         if rdtype.upper() == "TXT":
             for r in answer:
@@ -208,9 +249,26 @@ def query_records(
                     records.append(r.to_text().strip('"'))
         else:
             records = [r.to_text() for r in answer]
-        return records, ttl, ad_flag
-    except dns.exception.DNSException:
-        return [], None, False
+        return records, ttl, ad_flag, None
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        # Authoritative "nothing here" -- an answer, not a failure.
+        return [], None, False, None
+    except dns.exception.Timeout as exc:
+        global _LOOKUP_FAILURES
+        _LOOKUP_FAILURES += 1
+        return [], None, False, "timeout: {}".format(exc)
+    except dns.exception.DNSException as exc:
+        # NoNameservers (SERVFAIL), FormError, and friends: we did not find out.
+        _LOOKUP_FAILURES += 1
+        return [], None, False, str(exc) or exc.__class__.__name__
+
+
+def query_records(
+    resolver: dns.resolver.Resolver, name: str, rdtype: str
+) -> Tuple[List[str], Optional[int], bool]:
+    """Backwards-compatible 3-tuple form used by every check except PTR."""
+    records, ttl, ad_flag, _reason = query_records_ex(resolver, name, rdtype)
+    return records, ttl, ad_flag
 
 
 def find_duplicates(seq: List[str]) -> List[str]:
@@ -490,6 +548,16 @@ def _is_generic_ptr(hostname: str) -> bool:
     return any(marker in hn for marker in GENERIC_PTR_MARKERS)
 
 
+def _ptr_details(entries: List[Dict], status: str) -> str:
+    """Comma-joined IPs in the given PTR status, for display in a trigger name.
+
+    Returns '*NONE*' when empty: an empty string would make Zabbix render the macro
+    as a blank, which reads as a broken template rather than as 'nothing to report'.
+    """
+    ips = [e.get("ip", "") for e in entries if e.get("status") == status]
+    return ", ".join(i for i in ips if i) or "*NONE*"
+
+
 def check_ptr_fcrdns(resolver: dns.resolver.Resolver, ip: str, check_ipv6: bool) -> Dict:
     try:
         ip_obj = ipaddress.ip_address(ip)
@@ -500,11 +568,18 @@ def check_ptr_fcrdns(resolver: dns.resolver.Resolver, ip: str, check_ipv6: bool)
 
     try:
         rev = dns.reversename.from_address(ip)
-        ptr_records, _, _ = query_records(resolver, str(rev), "PTR")
+        ptr_records, _, _, ptr_error = query_records_ex(resolver, str(rev), "PTR")
+        if ptr_error is not None:
+            # A failed lookup is not evidence of absence: only NXDOMAIN/NODATA is.
+            return {"ip": ip, "status": "ERROR", "error": ptr_error}
         if not ptr_records:
             return {"ip": ip, "status": "MISSING"}
         ptr_host = ptr_records[0].rstrip(".")
-        a_records, _, _ = query_records(resolver, ptr_host, "A")
+        a_records, _, _, a_error = query_records_ex(resolver, ptr_host, "A")
+        if a_error is not None:
+            # Same rule as the PTR leg: without an answer we cannot judge FCrDNS,
+            # and NO_FCRDNS would assert the forward record disagrees.
+            return {"ip": ip, "status": "ERROR", "error": a_error, "ptr": ptr_host}
         match = ip in [a.rstrip(".") for a in a_records]
         generic = _is_generic_ptr(ptr_host)
         if generic:
@@ -578,7 +653,6 @@ def check_dnsbl(
         txt_answers: List[str] = []
         error_msg: Optional[str] = None
         nxdomain = False
-        noanswer = False
 
         try:
             answers = r.resolve(query_name, "A", raise_on_no_answer=False, search=False)
@@ -588,11 +662,11 @@ def check_dnsbl(
                 if answers.response and answers.response.rcode() == dns.rcode.NXDOMAIN:
                     nxdomain = True
                 else:
-                    noanswer = True
+                    pass  # NODATA: name exists, no A record
         except dns.resolver.NXDOMAIN:
             nxdomain = True
         except dns.resolver.NoAnswer:
-            noanswer = True
+            pass  # NODATA is not a clean 'not listed' -> falls through to CHECK FAILED
         except dns.exception.Timeout as exc:
             error_msg = f"timeout: {exc}"
         except dns.exception.DNSException as exc:
@@ -613,7 +687,7 @@ def check_dnsbl(
             except dns.resolver.NXDOMAIN:
                 nxdomain = True
             except dns.resolver.NoAnswer:
-                noanswer = True
+                pass  # NODATA is not a clean 'not listed' -> falls through to CHECK FAILED
             except dns.exception.Timeout as exc:
                 if not error_msg:
                     error_msg = f"timeout_txt: {exc}"
@@ -1080,6 +1154,11 @@ def main() -> int:
             "generic": ptr_generic,
             "errors": ptr_errors,
             "checked": len(ptr_entries),
+            # Which IPs, not just how many: with several MX the count alone does not
+            # say which address is broken. Zabbix expression macros cannot render text
+            # (see 0.1.47), so the trigger reads this via {ITEM.LASTVALUE<n>} instead.
+            "missing_details": _ptr_details(ptr_entries, "MISSING"),
+            "nofcrdns_details": _ptr_details(ptr_entries, "NO_FCRDNS"),
         }
 
         if dnsbl_test_ip:
@@ -1236,6 +1315,8 @@ def main() -> int:
         pass
 
     result["meta"]["query_time_ms"] = int((time.time() - start) * 1000)
+
+    result["meta"]["lookup_failures"] = _LOOKUP_FAILURES
 
     save_cache(CACHE_PATH, cache)
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
