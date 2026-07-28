@@ -345,12 +345,12 @@ ruff check .
 ```bash
 # Simulate bad SPF
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "5" "default" "1" \
   --simulate bad_spf
 
 # Simulate DNSBL
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "5" "default" "1" \
   --simulate dnsbl
 ```
 
@@ -359,7 +359,7 @@ ruff check .
 ```bash
 # Check test IP status in DNSBL
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org,b.barracudacentral.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org,b.barracudacentral.org" "" "10" "-all|~all" "1200" "5" "5" "default" "1" \
   --dnsbl-test-ip 127.0.0.2
 ```
 
@@ -387,29 +387,25 @@ ls -l /opt/zabbix-mail-dns/venv/bin/python3
 the environment is missing, Zabbix receives a structured error in `meta.error` rather than
 an empty reply, and the "DNS audit script error" trigger fires.
 
-### Python 3 Not Found
-
-```bash
-# Install Python on Zabbix server
-apt install -y python3 python3-pip
-pip3 install dnspython
-```
-
-### dnspython Not Installed
-
-```bash
-pip3 install dnspython>=2.0
-
-# Or in container:
-docker exec zabbix-server /opt/zabbix-mail-dns/venv/bin/pip install 'dnspython>=2.6'
-```
-
 ### DNSBL: "POLICY/ERROR" Status
 
 Public resolvers (8.8.8.8) are blocked by DNSBL providers. Solution:
 
 1. Install local resolver (Unbound/Bind) on local machine
 2. Set macro: `{$DNS_RESOLVER} = "127.0.0.1"`
+
+### DNSBL: a zone "cannot prove it is alive"
+
+The verdict of a blocklist is its `A` answer; the `TXT` record only explains that verdict
+in words. A zone that answers `A` is alive even when its `TXT` lookup times out — since
+0.1.61 the script classifies by `A` alone and keeps the TXT error text in the `txt` field
+for reading. So `mail.dnsbl.canary.failed` above zero now means the zone really did not
+return `{$DNSBL_TEST_IP}`: it has been emptied (SORBS after 2024) or it refuses your
+queries.
+
+A slow `TXT` still costs wall-clock, and `zen.spamhaus.org` is the usual source of it:
+public mirrors rate-limit. If runs creep toward `MAIL_DNS_DEADLINE_SEC`, lower
+`{$DNS_TIMEOUT_SEC}` or move to a Spamhaus DQS key.
 
 ### Zabbix Proxy: Script Not Working
 

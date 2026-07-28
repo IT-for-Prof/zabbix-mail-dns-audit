@@ -346,12 +346,12 @@ ruff check .
 ```bash
 # Симуляция плохого SPF
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "5" "default" "1" \
   --simulate bad_spf
 
 # Симуляция DNSBL
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org" "" "10" "-all|~all" "1200" "5" "5" "default" "1" \
   --simulate dnsbl
 ```
 
@@ -360,7 +360,7 @@ ruff check .
 ```bash
 # Проверка статуса тестового IP в DNSBL
 ./externalscripts/mail.dns.audit example.com 8.8.8.8 3 0 \
-  "zen.spamhaus.org,b.barracudacentral.org" "" "10" "-all|~all" "1200" "5" "1" "default" "1" \
+  "zen.spamhaus.org,b.barracudacentral.org" "" "10" "-all|~all" "1200" "5" "5" "default" "1" \
   --dnsbl-test-ip 127.0.0.2
 ```
 
@@ -394,6 +394,18 @@ ls -l /opt/zabbix-mail-dns/venv/bin/python3
 
 1. Установите локальный резолвер (Unbound/Bind) на локальной машине
 2. Установите макрос: `{$DNS_RESOLVER} = "127.0.0.1"`
+
+### DNSBL: зона «не подтвердила, что жива»
+
+Вердикт блоклиста — это его ответ `A`; запись `TXT` только поясняет вердикт словами.
+Зона, ответившая `A`, жива, даже если её `TXT` ушёл в таймаут: начиная с 0.1.61 скрипт
+классифицирует по `A` и кладёт текст ошибки TXT в поле `txt` для чтения. Поэтому
+`mail.dnsbl.canary.failed` больше нуля теперь означает, что зона действительно не вернула
+`{$DNSBL_TEST_IP}` — она опустошена (как SORBS после 2024) или отказывает вам в запросах.
+
+Медленный `TXT` при этом по-прежнему тратит время, и обычный его источник —
+`zen.spamhaus.org`: публичные зеркала лимитируют запросы. Если прогон подбирается к
+`MAIL_DNS_DEADLINE_SEC`, снизьте `{$DNS_TIMEOUT_SEC}` или переходите на ключ Spamhaus DQS.
 
 ### Zabbix Proxy: скрипт не работает
 
