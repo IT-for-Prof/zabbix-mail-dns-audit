@@ -1,0 +1,13 @@
+# The external check is named `mail.dns.audit` — Zabbix calls it by that exact
+# name, so it cannot carry a .py suffix. Without this include, `ruff check .`
+# walks the tree, finds only the test file, and reports "All checks passed"
+# having never opened the 1200-line script it was meant to check. A green run
+# that inspected nothing is worse than no run at all.
+extend-include = ["externalscripts/mail.dns.audit"]
+
+line-length = 120
+
+[lint]
+# F (pyflakes) and E9 (syntax/runtime errors) only. The script predates this
+# config; a wider rule set would bury real findings under style noise.
+select = ["F", "E9"]

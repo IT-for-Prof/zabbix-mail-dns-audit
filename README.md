@@ -1,7 +1,7 @@
 # Zabbix Mail DNS Audit
 
 ![Zabbix 7.0+](https://img.shields.io/badge/Zabbix-7.0%2B-blue)
-![Python 3.6+](https://img.shields.io/badge/Python-3.6%2B-green)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)
 
 Мониторинг почтовой инфраструктуры доменов в Zabbix: MX, SPF, DMARC, DKIM, DNSBL, DNSSEC, PTR/FCrDNS для MX.
 
@@ -39,86 +39,55 @@ Zabbix Mail DNS Audit — интегрированное решение для �
 - ✅ Проверка DNS автоконфигурации почтового клиента (autoconfig, autodiscover, SRV)
 - ✅ Отображение изменений до/после: триггеры SPF, MX, DKIM и DMARC показывают «было → стало» в колонке Info списка проблем (Zabbix operational data)
 
+- ✅ Дубликаты записей: MX, DMARC, DKIM-селекторы, NS, SOA (две DMARC-записи по RFC 7489 отключают политику целиком)
+- ✅ Null MX (RFC 7505): домен, отключивший приём почты, называется прямо, а не выдаётся за отсутствие MX
+- ✅ Отозванный ключ DKIM (пустой `p=`) и тестовый режим `t=y` (RFC 6376 §3.6.1) — запись на месте, а защиты нет
+- ✅ Нейм-серверы, не отвечающие SOA: молчащий участник делегирования невидим для проверки согласованности серийников
+- ✅ Пооперационные признаки видимости: проверка отсутствия утверждает «записи нет» только когда её собственные запросы ответили
+- ✅ Обнаружение по каждому адресу, MX-хосту, DKIM-селектору и нейм-серверу: статус PTR, CNAME, размер ключа, серийник SOA
+- ✅ Адреса, оставшиеся вне проверки по чёрным спискам, видны отдельно — «не проверено» не читается как «чисто»
+- ✅ Смена NS- и DS-записей с показом «было → стало»
+
 ## Требования
 
 - Zabbix 7.0+
-- Python 3.6+
-- dnspython 2.0+
+- Python 3.11+ в отдельном окружении по пути `/opt/zabbix-mail-dns/venv` (см. шаг 1)
+- dnspython 2.6+ (ставится в это окружение)
 - Linux/Unix окружение
 - Доступ в Интернет для DNS и DNSBL запросов
 
+> **Почему venv, а не системный Python.** Скрипт исполняется на прокси, а они бывают
+> разных поколений: на одной машине системным остаётся Python 3.6, где нет
+> `ipaddress.subnet_of()`. Отдельное окружение по одинаковому пути даёт всем машинам
+> один интерпретатор и одну версию dnspython, поэтому скрипт остаётся байт-в-байт
+> одинаковым везде, а поведение — воспроизводимым.
+
 ## Быстрая установка
 
-### Шаг 1: Установка зависимостей
+### Шаг 1: Окружение Python
 
-#### Ubuntu/Debian 12+ и Python 3.11+ (PEP 668)
-
-Начиная с Debian 12/Ubuntu 23.10, система защищает глобальный Python от модификации через pip. Используйте один из способов:
-
-**Способ A: виртуальное окружение**
+Одинаково на сервере Zabbix и на каждом прокси, где исполняется проверка:
 
 ```bash
-apt update
-apt install -y python3-full python3-venv
+# Выбрать самый новый доступный интерпретатор
+best=""; for v in 3.13 3.12 3.11; do [ -x /usr/bin/python$v ] && { best=$v; break; }; done
 
-mkdir -p /opt/zabbix-dns-monitoring
-python3 -m venv /opt/zabbix-dns-monitoring/.venv
-/opt/zabbix-dns-monitoring/.venv/bin/pip install -U pip dnspython
+mkdir -p /opt/zabbix-mail-dns
+/usr/bin/python$best -m venv /opt/zabbix-mail-dns/venv
+/opt/zabbix-mail-dns/venv/bin/pip install --upgrade pip
+/opt/zabbix-mail-dns/venv/bin/pip install "dnspython>=2.6"
+chown -R zabbix:zabbix /opt/zabbix-mail-dns
 ```
 
-> **⚠️ Важно для Zabbix:** Шебанг скрипта — `#!/usr/bin/python3` (системный Python). Zabbix запускает внешний скрипт напрямую через шебанг — виртуальное окружение **не активируется**. После копирования скрипта в `externalscripts/` обновите шебанг:
->
-> ```bash
-> sed -i '1s|.*|#!/opt/zabbix-dns-monitoring/.venv/bin/python3|' /usr/lib/zabbix/externalscripts/mail.dns.audit
-> ```
->
-> Или используйте **Способ B** (`python3-dnspython` через apt) — проще и не требует изменения шебанга.
-
-Ручное тестирование:
+Проверка:
 
 ```bash
-/opt/zabbix-dns-monitoring/.venv/bin/python3 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
+/opt/zabbix-mail-dns/venv/bin/python3 -c "import sys, dns; print(sys.version, dns.__version__)"
 ```
 
-**Способ B: системный пакет (рекомендуется для Zabbix)**
-
-```bash
-apt update
-apt install -y python3-dnspython
-```
-
-Если пакет `python3-dnspython` не найден в репозитории, используйте Способ A.
-
-**Способ C: для миграции существующего кода (не рекомендуется)**
-
-Если абсолютно необходимо нарушить защиту (на свой риск):
-
-```bash
-pip3 install dnspython --break-system-packages
-```
-
-Это может нарушить системные зависимости при обновлении Python.
-
-#### Ubuntu/Debian (старые версии до 22.04)
-
-```bash
-apt update
-apt install -y python3 python3-pip
-pip3 install dnspython
-```
-
-#### CentOS/RHEL
-
-```bash
-yum install -y python3 python3-pip
-pip3 install dnspython
-```
-
-#### Alpine (контейнер)
-
-```bash
-apk add --no-cache python3 py3-dnspython
-```
+Шебанг скрипта указывает на это окружение, поэтому системный Python не используется и
+конфликтов с пакетами дистрибутива (PEP 668, `externally-managed-environment`) не
+возникает.
 
 ### Шаг 2: Развёртывание скрипта
 
@@ -173,7 +142,9 @@ ls -l /usr/lib/zabbix/externalscripts/mail.dns.audit
 
 > **Zabbix Proxy:** Если хосты мониторятся через **Zabbix Proxy**, разверните скрипт и Python-зависимости на **прокси-сервере**, а не на Zabbix Server. Внешние скрипты выполняются на той машине (сервер или прокси), которая мониторит хост. Шаги установки одинаковы для каждого прокси. После установки на каждой машине запустите `--selfcheck`.
 
-> **Таймаут выполнения:** скрипт ограничивает общее время работы дедлайном (по умолчанию 25 c, переменная окружения `MAIL_DNS_DEADLINE_SEC`), который держится **ниже** значения `Timeout` внешних проверок Zabbix (по умолчанию 30 c). Зависший резолвер даёт понятную ошибку (`meta.error`) вместо «Timeout while executing a shell script». Если вы меняете `Timeout` в `zabbix_server.conf`/`zabbix_proxy.conf`, задайте `MAIL_DNS_DEADLINE_SEC ≈ Timeout − 5`.
+> **Таймаут выполнения:** скрипт ограничивает общее время работы дедлайном (по умолчанию 25 c, переменная окружения `MAIL_DNS_DEADLINE_SEC`), который должен держаться **ниже** таймаута внешних проверок Zabbix. Тогда зависший резолвер даёт понятную ошибку (`meta.error`) вместо «Timeout while executing a shell script».
+>
+> **Таймаут обязательно поднять вручную.** У внешних проверок Zabbix значение по умолчанию — **3 секунды** при допустимом диапазоне 1–30, а не 30 секунд. Типичный прогон занимает около 5 секунд, поэтому на умолчании поллер убьёт скрипт раньше, чем сработает дедлайн, и аварийный конверт вы не увидите никогда. Задайте таймаут внешних проверок в 30 секунд (*Administration → General → Timeouts*) и оставьте `MAIL_DNS_DEADLINE_SEC ≈ Timeout − 5`. Значение на прокси перекрывает глобальное, а значение элемента — оба; проверка исполняется на прокси, так что поднимать нужно именно там.
 
 ### Шаг 3: Загрузка шаблона и импорт
 
@@ -306,6 +277,14 @@ wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
 | `{$TEMPLATE_VERSION}` | `0.1.52` | Версия шаблона |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
 
+### Признаки видимости и покрытие
+
+| Макрос | Назначение |
+|---|---|
+| `{$MAIL_DNS_NODATA_SEC}` | Окно тишины до алерта «скрипт не запускается». Должно превышать удвоенный интервал опроса: при часовом опросе получасовое окно истинно половину каждого часа. Zabbix не вычисляет период меньше 30 секунд. |
+| `{$DNSBL_MAX_IP}` | Сколько адресов проверять по чёрным спискам. PTR и FCrDNS проверяются у **каждого** адреса независимо от этого лимита — у обратного DNS нет внешних квот. Оставшиеся за лимитом считаются в `mail.dnsbl.not_checked`. |
+| `{$CIDR_ALLOWLIST}` | Сети, которым разрешено быть в SPF. Пустое значение отключает сравнение; битые механизмы `ip4:`/`ip6:` считаются отдельно и сообщаются всегда. |
+
 ## Использование
 
 ### Проверка скрипта вручную
@@ -374,57 +353,20 @@ DEBUG_DNSBL=1 ./externalscripts/mail.dns.audit example.com
 
 ## Устранение неполадок
 
-### Ошибка: `error: externally-managed-environment` при установке dnspython
+### Скрипт не запускается: нет интерпретатора или dnspython
 
-Это ошибка PEP 668 в Debian 12+ и Ubuntu 23.10+, защищающая системный Python.
-
-**Решение: используйте виртуальное окружение**
-
-```bash
-apt install -y python3-full python3-venv
-
-# Создайте окружение
-python3 -m venv /opt/dns-venv
-. /opt/dns-venv/bin/activate
-
-# Установите пакет
-pip install dnspython
-```
-
-Обновите шебанг развёрнутого скрипта, чтобы он использовал Python из venv:
+Все три прежних случая — `externally-managed-environment` (PEP 668), отсутствие
+Python 3 нужной версии и отсутствие dnspython — решаются одним и тем же: окружением
+из шага 1. Проверить, что оно на месте:
 
 ```bash
-sed -i '1s|.*|#!/opt/dns-venv/bin/python3|' /usr/lib/zabbix/externalscripts/mail.dns.audit
+ls -l /opt/zabbix-mail-dns/venv/bin/python3
+/usr/lib/zabbix/externalscripts/mail.dns.audit --selfcheck
 ```
 
-Или проверьте вручную:
-
-```bash
-/opt/dns-venv/bin/python3 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
-```
-
-**Альтернатива: системный пакет (если доступен)**
-
-```bash
-apt install -y python3-dnspython
-```
-
-### Python 3 не найден
-
-```bash
-# На сервере Zabbix установить Python
-apt install -y python3 python3-pip
-pip3 install dnspython
-```
-
-### dnspython не установлена
-
-```bash
-pip3 install dnspython>=2.0
-
-# Или в контейнере:
-docker exec zabbix-server apk add --no-cache py3-dnspython
-```
+`--selfcheck` печатает версию скрипта, версию Python и версию dnspython. Если окружения
+нет, Zabbix получит структурированную ошибку в `meta.error`, а не пустой ответ, и
+сработает триггер «DNS audit script error».
 
 ### DNSBL: "POLICY/ERROR" статус
 
@@ -503,39 +445,7 @@ Triggers & Alerts
 
 ## История изменений
 
-Полная история: [CHANGELOG.md](CHANGELOG.md)
-
-Последние обновления:
-- **v0.1.52** — Отсутствие записи больше нельзя утверждать с неполного обзора: скрипт считает неудачные DNS-запросы (`meta.lookup_failures`), а HIGH-триггеры «No MX records found» и «DKIM record missing» получили условие `lookup_failures=0`. Раньше недоступный резолвер давал два ложных HIGH-пейджа на хост — воспроизведено: 16 неудачных запросов, пустые MX и DKIM, при этом `meta.error` пуст, так что зависимость от «DNS audit script error» не спасала. Новый триггер сообщает, что проверки отсутствия сейчас подавлены — иначе они замолкали бы тихо. Фильтр `min(...,#2)` добавлен триггеру FCrDNS. Значение `-1` у `mail.dns.lookup_failures` означает «не измерено» и намеренно отличается от `0`
-- **v0.1.51** — Транзиентный сбой DNS больше не выдаётся за отсутствие PTR: `query_records()` схлопывала `NXDOMAIN`, `NoAnswer`, `Timeout` и `NoNameservers` в один пустой список, и `check_ptr_fcrdns()` читала его как `MISSING` — 13 ложных HIGH за 33 дня при живой PTR-записи. Добавлена `query_records_ex()` с причиной неуспеха; авторитетным отрицанием считаются только `NXDOMAIN`/`NoAnswer`. То же исправлено на прямом A-запросе. Аварийный скелет дополнен корнями `ptr` и `dmarc` (`lld_*` намеренно не добавлены — пустой `data` запускает удаление обнаруженного). Новые элементы: счётчик ошибок PTR, список адресов без PTR, самотест живости DNSBL-зон. Первый тест в репозитории: `tests/test_ptr_states.py`
-- **v0.1.50** — Конверты ошибок теперь содержат полную структуру результата (а не только `meta`): при ошибке запуска/дедлайне/исключении ~35 зависимых элементов больше не уходят в NOTSUPPORTED — скелет вынесен в единый `_default_result()`, ошибка резолвит все JSONPath (заполнен только `meta.error`), триггер «DNS audit script error» по-прежнему срабатывает; Ctrl-C (`KeyboardInterrupt`) пробрасывается; в README описана связь `MAIL_DNS_DEADLINE_SEC` ↔ Zabbix `Timeout`
-- **v0.1.49** — Надёжность и информативность: отсутствие зависимости `dnspython` больше не выдаёт сырой traceback (молчаливый NOTSUPPORTED), а структурированный `meta.error` — триггер «DNS audit script error» срабатывает сразу с понятным сообщением; добавлен общий дедлайн выполнения (25с, env `MAIL_DNS_DEADLINE_SEC`) — зависший резолвер даёт чистую ошибку вместо «Timeout while executing a shell script»; верхнеуровневый перехват исключений в `main()`; флаг `--selfcheck` для проверки зависимостей после установки; `requirements.txt`; в шаблоне у `mail.dns.error` добавлен обработчик ошибок (не-JSON вывод тоже взводит триггер ошибки)
-- **v0.1.48** — DNSSEC: установлен бит EDNS DO — флаг `ad_flag` ранее был всегда `False`, т.к. валидирующий резолвер не возвращал флаг AD без запроса DNSSEC (исправление #1, спасибо @Salzi); таймаут `{$DNS_TIMEOUT_SEC}` теперь применяется на всех путях резолвера (раньше игнорировался при пустом `{$DNS_RESOLVER}`); `ad_flag` теперь учитывает ответы apex `MX` и `DS`, а не только A/AAAA MX-хостов — подписанные домены с почтой во внешней неподписанной зоне (Microsoft 365 / Proofpoint, напр. `nasa.gov`) больше не показывают ложный `False`
-- **v0.1.47** — Триггеры: имена проблем «DNSBL check failed» и «MX IP listed in DNSBL» (`*UNKNOWN*` → `{ITEM.LASTVALUE<N>}`), убрана задвоенная единица в «DNS query slow»; «было → стало» на триггерах изменения SPF/MX/DKIM/DMARC теперь работает через кросс-запусковый кэш скрипта; атомарная запись кэша
-- **v0.1.46** — SPF: исправлен парсинг квалификаторов RFC 7208 §4.6.1 (`+mx`, `+a`, `-include:...` ранее игнорировались); исправлено ложное совпадение `all` с механизмом `a`; DNS-резолвер по умолчанию изменён на `127.0.0.1`
-- **v0.1.45** — Кэш DNSBL: ошибки (CHECK FAILED, POLICY/ERROR) теперь кэшируются на 120 сек вместо полного TTL; смена DNS-резолвера больше не возвращает устаревшие результаты — резолвер включён в ключ кэша
-- **v0.1.44** — DKIM: `rsa-unknown` вместо `rsa-0`; теги `dmarc_before`/`dmarc_after` на триггере понижения DMARC; блок `vendor:` с автором в метаданных шаблона Zabbix 7.0
-- **v0.1.43** — Триггеры изменения DKIM и DMARC теперь показывают «было → стало» в колонке Info списка проблем
-- **v0.1.42** — Триггеры изменения MX и SPF теперь показывают «было → стало» в колонке Info списка проблем
-- **v0.1.41** — Имена триггеров: "DNS audit script error" показывает текст ошибки `{ITEM.LASTVALUE}`; "DMARC rua= malformed" показывает неверное значение; "DNS query slow" показывает фактическое время; исправлен баг `{ITEM.LASTVALUE3}` в описании триггера "MX IP listed in DNSBL"
-- **v0.1.40** — Триггер "DNSBL check failed" теперь показывает IP, зону и причину прямо в имени проблемы через `{?last(...mail.dnsbl.listed.details)}`; описание обновлено с указанием общих причин (публичный резолвер заблокирован, рекомендуется локальный Unbound)
-- **v0.1.39** — DKIM ключ: размер RSA (min_key_bits, weak_key_count), триггеры WARNING (<2048 бит) и HIGH (≤1024 бит); DMARC adkim/aspf — информационные элементы; MX→CNAME нарушение RFC 5321 §5 — триггер WARNING
-- **v0.1.38** — DMARC rua=: opt-in триггер на отсутствие (INFO, {$CHECK_DMARC_RUA}=0 по умолчанию) + всегда активный триггер на некорректный формат (WARNING)
-- **v0.1.37** — Удалён триггер DMARC rua= missing — rua= опционален по RFC 7489; отсутствие допустимо
-- **v0.1.36** — Bugfix: имена DNSBL-триггеров теперь показывают точный текст ответа; добавлены 6 пропущенных skip-макросов; восстановлена зависимость от mail.dns.error в 15 триггерах; исправлено значение {$TEMPLATE_VERSION}
-- **v0.1.35** — Макросы для отключения проверок DNSSEC/MTA-STS/TLS-RPT/BIMI на уровне хоста ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
-- **v0.1.34** — Bugfix: обработка null в DMARC rua=, определение mx_covered через a:hostname в SPF, синхронизация VERSION скрипта
-- **v0.1.33** — 8 новых триггеров (отсутствие MX, нарушения RFC SPF, обнаружение изменений, DMARC rua, сбои DNSBL), зависимости от ошибок на всех триггерах, макрос {$MAIL_CLIENT_AUTOCONFIG_CHECK}
-- **v0.1.32** (2026-02-20): Добавлен элемент `mail.script.version` и триггер WARNING на несовпадение версии скрипта с `{$TEMPLATE_VERSION}` — выявляет устаревший скрипт на прокси.
-- **v0.1.31** (2026-02-20): Исправлен shebang скрипта (`#!/usr/bin/python3`); добавлен `.gitattributes` для LF-окончаний строк — устраняет сбой запуска скрипта из Zabbix из-за CRLF и отсутствия PATH.
-- **v0.1.30** (2026-02-20): Повышена важность триггера DMARC p=none до WARNING; добавлен триггер HIGH на откат политики DMARC с quarantine/reject → none.
-- **v0.1.29** (2026-02-20): Добавлены проверки DNS автоконфигурации почтового клиента (autoconfig, autodiscover, SRV) и соответствующие триггеры.
-- **v0.1.28** (2026-02-20): Улучшена информативность триггеров — добавлены {HOST.HOST}, контекстные данные и описания с рекомендациями.
-- **v0.1.27** (2026-01-13): Замена {HOST.NAME} на {HOST.HOST} в ключах элементов для надёжности.
-- **v0.1.26** (2025-12-30): Решение проблемы таймаутов — {$DNS_RESOLVER} по умолчанию пуст для использования системного резолвера.
-- **v0.1.18** (2025-12-26): Добавлен nodata-триггер для master item (обнаружение таймаутов/отсутствия данных).
-- **v0.1.17** (2025-12-26): Добавлены проверки и триггеры на дубликаты DNS (MX, DMARC, DKIM, NS, SOA).
-- **v0.1.16** (2025-12-24): Удалены UUID из шаблона для портативности.
+Полная история с обоснованиями: [CHANGELOG.md](CHANGELOG.md)
 
 ## Ссылки
 

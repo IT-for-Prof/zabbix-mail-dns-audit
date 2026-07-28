@@ -1,7 +1,7 @@
 # Zabbix Mail DNS Audit
 
 ![Zabbix 7.0+](https://img.shields.io/badge/Zabbix-7.0%2B-blue)
-![Python 3.6+](https://img.shields.io/badge/Python-3.6%2B-green)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)
 
 Monitor email domain infrastructure in Zabbix: MX, SPF, DMARC, DKIM, DNSBL, DNSSEC, PTR/FCrDNS for MX.
 
@@ -39,86 +39,54 @@ Zabbix Mail DNS Audit is an integrated solution for auditing email domain DNS co
 - ✅ Mail client autoconfiguration DNS checks (autoconfig, autodiscover, SRV)
 - ✅ Change detection with before→after display: SPF, MX, DKIM and DMARC change triggers show old→new values in the Problems list Info column (Zabbix operational data)
 
+- ✅ Duplicate records: MX, DMARC, DKIM selectors, NS, SOA (two DMARC records disable the policy entirely per RFC 7489)
+- ✅ Null MX (RFC 7505): a domain that has switched mail off is named directly instead of being reported as missing MX
+- ✅ Revoked DKIM key (empty `p=`) and testing mode `t=y` (RFC 6376 section 3.6.1) — the record is present while the protection is not
+- ✅ Nameservers not answering SOA: a silent member of the delegation is invisible to the serial-consistency check
+- ✅ Per-section visibility flags: an absence check may claim "the record is missing" only when its own lookups answered
+- ✅ Per-address, per-MX-host, per-selector and per-nameserver discovery: PTR status, CNAME, key size, SOA serial
+- ✅ Addresses left outside the blocklist check are surfaced separately — "not checked" must not read as "clean"
+- ✅ NS and DS record changes with before→after display
+
 ## Requirements
 
 - Zabbix 7.0+
-- Python 3.6+
-- dnspython 2.0+
+- Python 3.11+ in a dedicated environment at `/opt/zabbix-mail-dns/venv` (see step 1)
+- dnspython 2.6+ (installed into that environment)
 - Linux/Unix environment
 - Internet access for DNS and DNSBL queries
 
+> **Why a venv rather than the system Python.** The check runs on proxies, and proxies
+> come from different generations: on one machine the system interpreter is still
+> Python 3.6, which has no `ipaddress.subnet_of()`. A dedicated environment at the same
+> path gives every machine one interpreter and one dnspython version, so the script stays
+> byte-identical everywhere and its behaviour stays reproducible.
+
 ## Quick Start
 
-### Step 1: Install Dependencies
+### Step 1: Python environment
 
-#### Ubuntu/Debian 12+ and Python 3.11+ (PEP 668)
-
-Starting with Debian 12/Ubuntu 23.10, the system protects global Python from modification via pip. Use one of the methods:
-
-**Method A: Virtual environment**
+Identical on the Zabbix server and on every proxy that executes the check:
 
 ```bash
-apt update
-apt install -y python3-full python3-venv
+# Pick the newest interpreter available
+best=""; for v in 3.13 3.12 3.11; do [ -x /usr/bin/python$v ] && { best=$v; break; }; done
 
-mkdir -p /opt/zabbix-dns-monitoring
-python3 -m venv /opt/zabbix-dns-monitoring/.venv
-/opt/zabbix-dns-monitoring/.venv/bin/pip install -U pip dnspython
+mkdir -p /opt/zabbix-mail-dns
+/usr/bin/python$best -m venv /opt/zabbix-mail-dns/venv
+/opt/zabbix-mail-dns/venv/bin/pip install --upgrade pip
+/opt/zabbix-mail-dns/venv/bin/pip install "dnspython>=2.6"
+chown -R zabbix:zabbix /opt/zabbix-mail-dns
 ```
 
-> **⚠️ Zabbix compatibility:** The script shebang is `#!/usr/bin/python3` (system Python). Zabbix runs external scripts via the shebang directly — it does **not** activate venvs. After copying the script to `externalscripts/`, update the shebang to the venv Python:
->
-> ```bash
-> sed -i '1s|.*|#!/opt/zabbix-dns-monitoring/.venv/bin/python3|' /usr/lib/zabbix/externalscripts/mail.dns.audit
-> ```
->
-> Or use **Method B** (`python3-dnspython` via apt) — simpler and works without shebang changes.
-
-Manual test:
+Verify:
 
 ```bash
-/opt/zabbix-dns-monitoring/.venv/bin/python3 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
+/opt/zabbix-mail-dns/venv/bin/python3 -c "import sys, dns; print(sys.version, dns.__version__)"
 ```
 
-**Method B: System package (recommended for Zabbix)**
-
-```bash
-apt update
-apt install -y python3-dnspython
-```
-
-If the `python3-dnspython` package is not found in the repository, use Method A.
-
-**Method C: For migrating existing code (not recommended)**
-
-If absolutely necessary to break the protection (at your own risk):
-
-```bash
-pip3 install dnspython --break-system-packages
-```
-
-This may break system dependencies when Python is updated.
-
-#### Ubuntu/Debian (older versions before 22.04)
-
-```bash
-apt update
-apt install -y python3 python3-pip
-pip3 install dnspython
-```
-
-#### CentOS/RHEL
-
-```bash
-yum install -y python3 python3-pip
-pip3 install dnspython
-```
-
-#### Alpine (container)
-
-```bash
-apk add --no-cache python3 py3-dnspython
-```
+The script's shebang points at this environment, so the system Python is never used and
+distribution package conflicts (PEP 668, `externally-managed-environment`) cannot occur.
 
 ### Step 2: Deploy Script
 
@@ -173,7 +141,9 @@ ls -l /usr/lib/zabbix/externalscripts/mail.dns.audit
 
 > **Zabbix Proxy:** If hosts are monitored by a **Zabbix Proxy**, deploy the script and Python dependencies on the **proxy server** — not the Zabbix Server. External check items run on whichever machine (server or proxy) monitors the host. The same installation steps apply to each proxy. Run `--selfcheck` on each machine after install.
 
-> **Execution timeout:** the script caps its total runtime with a deadline (default 25s, env `MAIL_DNS_DEADLINE_SEC`) kept **below** the Zabbix external-check `Timeout` (default 30s), so a stuck resolver yields a clear `meta.error` instead of "Timeout while executing a shell script". If you change `Timeout` in `zabbix_server.conf`/`zabbix_proxy.conf`, set `MAIL_DNS_DEADLINE_SEC ≈ Timeout − 5`.
+> **Execution timeout:** the script caps its total runtime with a deadline (default 25s, env `MAIL_DNS_DEADLINE_SEC`) that must stay **below** the Zabbix external-check timeout, so a stuck resolver yields a clear `meta.error` instead of "Timeout while executing a shell script".
+>
+> **You must raise that timeout by hand.** The Zabbix default for external checks is **3 seconds** (range 1-30), not 30. A typical run takes about 5 seconds, so on the default the poller kills the script long before the deadline fires and you never see the error envelope. Set the external-check timeout to 30s (*Administration → General → Timeouts*) and keep `MAIL_DNS_DEADLINE_SEC ≈ Timeout − 5`. A proxy's value overrides the global one and an item's value overrides both; the check runs on the proxy, so that is where it has to be raised.
 
 ### Step 3: Download Template and Import
 
@@ -306,6 +276,14 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 | `{$TEMPLATE_VERSION}` | `0.1.52` | Template version |
 | `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
 
+### Visibility and coverage
+
+| Macro | Purpose |
+|---|---|
+| `{$MAIL_DNS_NODATA_SEC}` | Silence window before the "script not running" alert. Must exceed twice the polling interval: at an hourly poll a 30-minute window is true for half of every hour. Zabbix does not evaluate periods under 30 seconds. |
+| `{$DNSBL_MAX_IP}` | How many addresses to check against blocklists. PTR and FCrDNS run for **every** address regardless of this limit — reverse DNS has no external quota. Whatever is left out is counted by `mail.dnsbl.not_checked`. |
+| `{$CIDR_ALLOWLIST}` | Networks allowed to appear in SPF. An empty value switches the comparison off; malformed `ip4:`/`ip6:` mechanisms are counted separately and always reported. |
+
 ## Usage
 
 ### Test Script Manually
@@ -374,40 +352,20 @@ DEBUG_DNSBL=1 ./externalscripts/mail.dns.audit example.com
 
 ## Troubleshooting
 
-### Error: `error: externally-managed-environment` when installing dnspython
+### The script will not start: no interpreter or no dnspython
 
-This is a PEP 668 error in Debian 12+ and Ubuntu 23.10+, which protects the system Python.
-
-**Solution: use virtual environment**
-
-```bash
-apt install -y python3-full python3-venv
-
-# Create environment
-python3 -m venv /opt/dns-venv
-. /opt/dns-venv/bin/activate
-
-# Install package
-pip install dnspython
-```
-
-Update the shebang in the deployed script to point to the venv Python:
+All three former cases — `externally-managed-environment` (PEP 668), a missing Python 3
+of the required version, and a missing dnspython — are answered by the same thing: the
+environment from step 1. Check that it is in place:
 
 ```bash
-sed -i '1s|.*|#!/opt/dns-venv/bin/python3|' /usr/lib/zabbix/externalscripts/mail.dns.audit
+ls -l /opt/zabbix-mail-dns/venv/bin/python3
+/usr/lib/zabbix/externalscripts/mail.dns.audit --selfcheck
 ```
 
-Or verify manually:
-
-```bash
-/opt/dns-venv/bin/python3 /usr/lib/zabbix/externalscripts/mail.dns.audit example.com
-```
-
-**Alternative: system package (if available)**
-
-```bash
-apt install -y python3-dnspython
-```
+`--selfcheck` prints the script version, the Python version and the dnspython version. If
+the environment is missing, Zabbix receives a structured error in `meta.error` rather than
+an empty reply, and the "DNS audit script error" trigger fires.
 
 ### Python 3 Not Found
 
@@ -423,7 +381,7 @@ pip3 install dnspython
 pip3 install dnspython>=2.0
 
 # Or in container:
-docker exec zabbix-server apk add --no-cache py3-dnspython
+docker exec zabbix-server /opt/zabbix-mail-dns/venv/bin/pip install 'dnspython>=2.6'
 ```
 
 ### DNSBL: "POLICY/ERROR" Status
@@ -503,39 +461,7 @@ Triggers & Alerts
 
 ## Changelog
 
-Full history: [CHANGELOG.md](CHANGELOG.md)
-
-Recent updates:
-- **v0.1.52** — Absence can no longer be claimed from an incomplete look: the script counts failed DNS lookups (`meta.lookup_failures`) and the HIGH triggers "No MX records found" and "DKIM record missing" are now gated on `lookup_failures=0`. An unreachable resolver used to produce two false HIGH pages per host — reproduced: 16 failed lookups, empty MX and DKIM, while `meta.error` stayed empty so the "DNS audit script error" dependency did not protect them. A new trigger announces that absence checks are currently suppressed, so they never go blind silently. The FCrDNS trigger gained the `min(...,#2)` filter. A value of `-1` on `mail.dns.lookup_failures` means "not measured" and is deliberately distinct from `0`
-- **v0.1.51** — A transient DNS failure is no longer reported as a missing PTR record: `query_records()` collapsed `NXDOMAIN`, `NoAnswer`, `Timeout` and `NoNameservers` into the same empty list and `check_ptr_fcrdns()` read that as `MISSING` — 13 false HIGH alerts in 33 days on a domain whose PTR was present throughout. Added `query_records_ex()` carrying the failure reason; only `NXDOMAIN`/`NoAnswer` count as authoritative absence. The same fix applies to the forward A lookup. The error skeleton gained the `ptr` and `dmarc` roots (`lld_*` deliberately omitted — empty `data` starts the deletion clock on discovered entities). New items: PTR error count, the affected IP list, and a DNSBL zone liveness self-test. First test in the repo: `tests/test_ptr_states.py`
-- **v0.1.50** — Error envelopes now emit the full result skeleton (not just `meta`): a startup/deadline/fatal error no longer flips ~35 dependent items to NOTSUPPORTED — the skeleton is factored into a single `_default_result()`, so an error resolves all dependent JSONPaths (only `meta.error` set) while the "DNS audit script error" trigger still fires; Ctrl-C (`KeyboardInterrupt`) is re-raised; documented the `MAIL_DNS_DEADLINE_SEC` ↔ Zabbix `Timeout` relationship
-- **v0.1.49** — Robustness & informativeness: a missing `dnspython` dependency no longer dumps a raw traceback (silent NOTSUPPORTED) but a structured `meta.error`, so the "DNS audit script error" trigger fires immediately with a clear message; added a total-runtime deadline (25s, env `MAIL_DNS_DEADLINE_SEC`) so a stuck resolver yields a clean error instead of "Timeout while executing a shell script"; top-level exception guard in `main()`; `--selfcheck` flag for post-install dependency verification; `requirements.txt`; template `mail.dns.error` now has an error handler so non-JSON output also trips the error trigger
-- **v0.1.48** — DNSSEC: set the EDNS DO bit — `ad_flag` was always `False` because a validating resolver never returns the AD flag without a DNSSEC request (fixes #1, thanks @Salzi); the `{$DNS_TIMEOUT_SEC}` timeout now applies on all resolver paths (previously ignored when `{$DNS_RESOLVER}` is empty); `ad_flag` now also incorporates the apex `MX` and `DS` answers instead of only the MX hosts' A/AAAA — signed domains whose mail lives in an unsigned provider zone (Microsoft 365 / Proofpoint, e.g. `nasa.gov`) no longer report a false `False`
-- **v0.1.47** — Triggers: problem names for "DNSBL check failed" and "MX IP listed in DNSBL" (`*UNKNOWN*` → `{ITEM.LASTVALUE<N>}`), removed doubled unit in "DNS query slow"; before→after on SPF/MX/DKIM/DMARC change triggers now works via the script's cross-run cache; atomic cache writes
-- **v0.1.46** — SPF: fixed qualifier parsing per RFC 7208 §4.6.1 (`+mx`, `+a`, `-include:...` were silently ignored); fixed `all` falsely matching the `a` mechanism; default DNS resolver changed to `127.0.0.1`
-- **v0.1.45** — DNSBL cache: errors (CHECK FAILED, POLICY/ERROR) now expire after 120s instead of full TTL; switching DNS resolver no longer serves stale results — resolver is now part of the cache key
-- **v0.1.44** — DKIM: `rsa-unknown` instead of `rsa-0`; `dmarc_before`/`dmarc_after` tags on policy downgrade trigger; `vendor:` block with author in Zabbix 7.0 native template metadata
-- **v0.1.43** — DKIM and DMARC change triggers now show before→after values in operational data
-- **v0.1.42** — MX and SPF change triggers now show before→after values in operational data
-- **v0.1.41** — Trigger names improved: "DNS audit script error" now shows error text via `{ITEM.LASTVALUE}`; "DMARC rua= malformed" shows actual bad value; "DNS query slow" shows actual ms; fixed `{ITEM.LASTVALUE3}` bug in "MX IP listed in DNSBL" description
-- **v0.1.40** — "DNSBL check failed" trigger now shows the affected IP, zone, and failure reason inline in the problem name via `{?last(...mail.dnsbl.listed.details)}`; description updated with common causes and remediation (public resolver blocked, local Unbound recommended)
-- **v0.1.39** — DKIM key size: RSA min_key_bits and weak_key_count items; WARNING trigger (<2048 bits, suppressed when HIGH active) and HIGH trigger (≤1024 bits); DMARC adkim/aspf informational items; MX→CNAME RFC 5321 §5 violation WARNING trigger
-- **v0.1.38** — DMARC rua= checks split: opt-in absent alert (INFO, {$CHECK_DMARC_RUA}=0 by default) + always-on malformed alert (WARNING)
-- **v0.1.37** — Removed DMARC rua= missing trigger — rua= is optional per RFC 7489; absence is valid
-- **v0.1.36** — Bugfix — DNSBL trigger names now show exact response text; 6 missing skip macros added; 15 triggers restored error dependency; {$TEMPLATE_VERSION} corrected
-- **v0.1.35** — Macros to skip DNSSEC/MTA-STS/TLS-RPT/BIMI checks per host ({$CHECK_DNSSEC}, {$CHECK_MTA_STS}, {$CHECK_TLS_RPT}, {$CHECK_BIMI})
-- **v0.1.34** — Bugfix — DMARC rua= null handling, SPF a:hostname mx_covered detection, script VERSION sync
-- **v0.1.33** — 8 new triggers (MX missing, SPF RFC violations, hash change detection, DMARC rua, DNSBL failures), error dependencies on all triggers, NS trigger fix, {$MAIL_CLIENT_AUTOCONFIG_CHECK} macro
-- **v0.1.32** (2026-02-20): Added `mail.script.version` item and WARNING trigger for version mismatch against `{$TEMPLATE_VERSION}` — detects outdated script on proxies.
-- **v0.1.31** (2026-02-20): Fixed script shebang (`#!/usr/bin/python3`); added `.gitattributes` for LF line endings — fixes script execution failure in Zabbix caused by CRLF and missing PATH.
-- **v0.1.30** (2026-02-20): Raised DMARC p=none trigger severity to WARNING; added HIGH trigger for DMARC policy downgrade (quarantine/reject → none).
-- **v0.1.29** (2026-02-20): Added mail client autoconfiguration DNS checks (autoconfig, autodiscover, SRV) with corresponding triggers.
-- **v0.1.28** (2026-02-20): Improved trigger informativeness — added {HOST.HOST}, contextual data, and descriptions with remediation guidance.
-- **v0.1.27** (2026-01-13): Replaced {HOST.NAME} with {HOST.HOST} in item keys for reliability.
-- **v0.1.26** (2025-12-30): Fixed timeout issues — {$DNS_RESOLVER} is now empty by default to use the system resolver.
-- **v0.1.18** (2025-12-26): Added nodata trigger for the master item (detecting timeouts/no data).
-- **v0.1.17** (2025-12-26): Added duplicate DNS checks/triggers (MX, DMARC, DKIM, NS, SOA).
-- **v0.1.16** (2025-12-24): Removed UUIDs from template for portability.
+Full history with rationale: [CHANGELOG.md](CHANGELOG.md)
 
 ## Links
 

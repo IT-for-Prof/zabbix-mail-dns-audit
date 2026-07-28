@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/opt/zabbix-mail-dns/venv/bin/python3
 # itforprof.com by Konstantin Tyutyunnik
 """
 External check for Zabbix: audit DNS posture of mail domains.
@@ -18,13 +18,70 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-VERSION = "0.1.52"
+VERSION = "0.1.57"
 
 # Wall-clock budget (seconds) for the whole run, kept under the Zabbix
 # external-check Timeout so a stuck resolver produces a clean error instead of
 # the poller killing the script ("Timeout while executing a shell script").
 # Override per environment with MAIL_DNS_DEADLINE_SEC.
+#
+# NOTE: the Zabbix default for the external-check timeout is 3 seconds (range
+# 1-30), NOT 30. A deployment that leaves it at the default kills most runs
+# long before this deadline is reached and never sees the clean error envelope.
+# Raise it explicitly -- on the proxy too, whose value overrides the global one.
 DEFAULT_DEADLINE_SEC = 25
+
+# Process start, captured at import so error envelopes emitted from anywhere --
+# including the dependency-missing path below, which runs before main() -- can
+# report the real elapsed time instead of zero.
+_START = time.time()
+
+# How many DNS lookups failed this run (timeout, SERVFAIL, ...) as opposed to
+# answering "there is nothing here". A module-level counter is fine: this is a
+# single-shot CLI process, not a service. Exposed as meta.lookup_failures so a
+# trigger can refuse to claim a record is ABSENT on a run where we demonstrably
+# could not see the whole picture.
+_LOOKUP_FAILURES = 0
+
+
+def _empty_spf_analysis() -> Dict:
+    """The shape parse_spf() returns when the domain publishes no SPF record.
+
+    Shared with _default_result() so the error envelope and the real no-SPF answer
+    cannot drift apart: an envelope that omits these keys sends every dependent
+    spf_analysis item to NOTSUPPORTED, which is exactly what the envelope exists
+    to prevent."""
+    return {
+        "has_ptr": False,
+        "has_multiple_spf": False,
+        "lookup_estimate": 0,
+        "unresolved_a_mechanisms": [],
+        "unresolved_mx_mechanisms": [],
+        "cidr_entries": [],
+        "cidr_out_of_allowlist": [],
+        "cidr_malformed": [],
+        "all_mechanism": "",
+        "all_policy_ok": False,
+        "plus_all": False,
+        "neutral_all": False,
+        "has_mx_mechanism": False,
+        "includes_mx_hosts": [],
+        "mx_covered": False,
+    }
+
+
+def _empty_snapshots() -> Dict:
+    """Hash skeleton. An empty hash reads as 'not known this run', and the
+    change-detection triggers work off the prev.* items rather than these."""
+    return {
+        "mx_hash": "",
+        "spf_hash": "",
+        "dmarc_hash": "",
+        "dkim_hash": "",
+        "ds_hash": "",
+        "ns_hash": "",
+        "soa": {"serial": "", "hash": ""},
+    }
 
 
 def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = None) -> Dict:
@@ -36,10 +93,18 @@ def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = 
     return {
         "mx": [],
         "mx_cname_count": 0,
+        # RFC 7505: the domain has declared it accepts no mail. False by default --
+        # on a run that saw nothing this is absence of knowledge, not an assertion.
+        "mx_null": False,
+        # Current NS/DS sets, published so the change triggers have something to
+        # display. Everything else already had a sibling to show; these two had
+        # only a hash, which a trigger name cannot render.
+        "ns": [],
+        "ds": [],
         "spf": [],
-        "spf_analysis": {},
-        "snapshots": {},
-        "prev": {"spf": "", "mx": "", "dkim": "", "dmarc": ""},
+        "spf_analysis": _empty_spf_analysis(),
+        "snapshots": _empty_snapshots(),
+        "prev": {"spf": "", "mx": "", "dkim": "", "dmarc": "", "ns": "", "ds": ""},
         "dnssec": {"ds_present": False, "ad_flag": False},
         "ptr": {
             "entries": [],
@@ -48,6 +113,7 @@ def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = 
             "generic": 0,
             "errors": 0,
             "checked": 0,
+            "discovered": 0,
             "missing_details": "*NONE*",
             "nofcrdns_details": "*NONE*",
         },
@@ -65,8 +131,17 @@ def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = 
         # asserts "nothing exists" and starts the 30d deletion clock on everything it
         # discovered; going NOTSUPPORTED asserts nothing and is harmless. An outage is
         # already covered by the "script not running (nodata 3h)" trigger.
-        "dnsbl": {"checked_ips": [], "zones": dnsbl_zones or [], "entries": [], "listed": [], "listed_count": 0},
-        "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0},
+        "dnsbl": {
+            "checked_ips": [],
+            "zones": dnsbl_zones or [],
+            "entries": [],
+            "listed": [],
+            "listed_count": 0,
+            "summary": "",
+            "not_checked": 0,
+        },
+        "dkim": {"records": [], "min_key_bits": 0, "weak_key_count": 0,
+                 "revoked_count": 0, "testing_count": 0},
         "transport": {"mta_sts": {"present": False, "txt": []}, "tls_rpt": {"present": False, "txt": []}},
         "bimi": {"present": False, "txt": []},
         "mail_client_config": {
@@ -74,13 +149,24 @@ def _default_result(resolver_used: str = "", dnsbl_zones: Optional[List[str]] = 
             "autodiscover": {"present": False, "type": "MISSING", "records": []},
             "autodiscover_srv": {"present": False, "records": []},
         },
-        "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
+        "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0,
+                           "unanswered": 0, "total": 0},
         "duplicates": {
             "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
             "dmarc": {"has_duplicates": False, "count": 0},
             "dkim": {"has_duplicates": False, "selectors": []},
             "ns": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
             "soa": {"has_duplicates": False, "count": 0},
+        },
+        # Did each section's own lookups answer? A check may only claim "this record is
+        # absent" when its OWN flag is true. Gating that claim on a process-wide failure
+        # counter was wrong: one permanently broken reverse zone, or authoritative probes
+        # a firewall drops, would suppress every absence check on the host forever -- and
+        # the escalation meant to reveal that would latch on and never clear. False by
+        # default, because a run that produced only this skeleton saw nothing at all.
+        "seen": {
+            "mx": False, "spf": False, "dkim": False, "ds": False,
+            "dmarc": False, "transport": False, "bimi": False, "autoconfig": False,
         },
         "meta": {
             "resolver_used": resolver_used,
@@ -102,6 +188,12 @@ def _emit_error(message: str, resolver_used: str = "") -> None:
     the 'DNS audit script error' trigger fires on the populated meta.error."""
     result = _default_result(resolver_used)
     result["meta"]["error"] = message
+    # Real values, not the skeleton's zeros. A deadline run is the one case where
+    # DNS was demonstrably slow, and reporting 0 ms there drew the query-time
+    # graph as an instant response and left the slow-DNS trigger blind. Same for
+    # lookup_failures, which gates the "absence checks suppressed" trigger.
+    result["meta"]["query_time_ms"] = int((time.time() - _START) * 1000)
+    result["meta"]["lookup_failures"] = _LOOKUP_FAILURES
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
     sys.stdout.flush()  # flush explicitly: the deadline handler hard-exits
 
@@ -120,13 +212,6 @@ except ImportError as exc:
 
 
 _DEADLINE_RESOLVER = ""
-
-# How many DNS lookups failed this run (timeout, SERVFAIL, ...) as opposed to
-# answering "there is nothing here". A module-level counter is fine: this is a
-# single-shot CLI process, not a service. Exposed as meta.lookup_failures so a
-# trigger can refuse to claim a record is ABSENT on a run where we demonstrably
-# could not see the whole picture.
-_LOOKUP_FAILURES = 0
 
 
 def _deadline_handler(signum, frame):  # noqa: ARG001
@@ -152,7 +237,11 @@ DEFAULT_MAX_MX = 5
 DEFAULT_MAX_IP_PER_MX = 5
 DEFAULT_DNSBL_MAX_IP = 5
 DEFAULT_DKIM_SELECTORS = ["default"]
-CACHE_PATH = "/tmp/mail_dns_audit_cache.json"
+# Per-uid, because /tmp is sticky: a file left behind by a root-run test cannot be
+# replaced by the zabbix user afterwards, os.replace fails with EPERM, save_cache
+# swallows it, and every prev.* value silently freezes with nothing to show for it.
+# Separate files per user make that collision impossible instead of merely unlikely.
+CACHE_PATH = "/tmp/mail_dns_audit_cache.{}.json".format(os.getuid())
 
 
 # Heuristic: PTR that looks generic/dynamic should be flagged
@@ -185,13 +274,21 @@ def load_cache(path: str) -> Dict[str, Dict]:
 
 
 def save_cache(path: str, data: Dict[str, Dict]) -> None:
-    # Atomic write: the cache file is shared by all hosts' concurrent
-    # external-check processes. Write to a per-PID temp file and os.replace()
-    # (atomic on POSIX) so a concurrent reader never sees a half-written file.
+    # Atomic write: the cache file is shared by all hosts' concurrent external-check
+    # processes. Write to a per-PID temp file and os.replace() (atomic on POSIX) so a
+    # concurrent reader never sees a half-written file.
+    #
+    # Re-read before merging, and merge only the keys THIS run changed. Overlaying our
+    # whole in-memory copy would be just as destructive as no merge at all: it carries
+    # the entries we read at start-up and would rewind whatever another host wrote in the
+    # meantime. A race remains between the re-read and the replace, but it is microseconds
+    # wide instead of a whole run; file locking would close it entirely if needed.
     tmp = "{}.{}.tmp".format(path, os.getpid())
     try:
+        merged = load_cache(path)
+        merged.update(data)  # data -- только изменённые нами ключи, см. вызывающий код
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=True)
+            json.dump(merged, fh, ensure_ascii=True)
         os.replace(tmp, path)
     except Exception:
         try:
@@ -222,7 +319,7 @@ def build_resolver(nameserver: str, timeout: float, shuffle: bool = True) -> dns
 
 
 def query_records_ex(
-    resolver: dns.resolver.Resolver, name: str, rdtype: str
+    resolver: dns.resolver.Resolver, name: str, rdtype: str, count_failures: bool = True
 ) -> Tuple[List[str], Optional[int], bool, Optional[str]]:
     """As query_records(), plus *why* the record list came back empty.
 
@@ -255,19 +352,21 @@ def query_records_ex(
         return [], None, False, None
     except dns.exception.Timeout as exc:
         global _LOOKUP_FAILURES
-        _LOOKUP_FAILURES += 1
+        if count_failures:
+            _LOOKUP_FAILURES += 1
         return [], None, False, "timeout: {}".format(exc)
     except dns.exception.DNSException as exc:
         # NoNameservers (SERVFAIL), FormError, and friends: we did not find out.
-        _LOOKUP_FAILURES += 1
+        if count_failures:
+            _LOOKUP_FAILURES += 1
         return [], None, False, str(exc) or exc.__class__.__name__
 
 
 def query_records(
-    resolver: dns.resolver.Resolver, name: str, rdtype: str
+    resolver: dns.resolver.Resolver, name: str, rdtype: str, count_failures: bool = True
 ) -> Tuple[List[str], Optional[int], bool]:
     """Backwards-compatible 3-tuple form used by every check except PTR."""
-    records, ttl, ad_flag, _reason = query_records_ex(resolver, name, rdtype)
+    records, ttl, ad_flag, _reason = query_records_ex(resolver, name, rdtype, count_failures)
     return records, ttl, ad_flag
 
 
@@ -294,6 +393,23 @@ def parse_allowlist(raw: str) -> List[ipaddress._BaseNetwork]:
         except ValueError:
             continue
     return items
+
+
+def _subnet_of(net, other) -> bool:
+    """Is `net` contained in `other`? Works on Python 3.6.
+
+    ipaddress.IPv4Network.subnet_of() only exists from 3.7. The script normally runs
+    from a venv built on 3.11+, but if that venv is missing the check falls back to the
+    system interpreter, which on CentOS Stream 8 is 3.6.8. The AttributeError raised
+    there is not a ValueError, so the caller's except clause would miss it and the whole
+    run would collapse into an error envelope.
+    Mixed address families compare False rather than raising, which is the honest answer
+    for "is this v4 network inside that v6 one".
+    """
+    if net.version != other.version:
+        return False
+    return (int(net.network_address) >= int(other.network_address)
+            and int(net.broadcast_address) <= int(other.broadcast_address))
 
 
 def _strip_spf_qualifier(token: str) -> str:
@@ -333,6 +449,7 @@ def parse_spf(
     unresolved_mx: List[str] = []
     cidr_entries: List[str] = []
     cidr_outside: List[str] = []
+    cidr_malformed: List[str] = []
     lookup_mechanisms: List[str] = []
     all_mechanism = ""
     plus_all = False
@@ -341,22 +458,7 @@ def parse_spf(
     include_matches_mx: List[str] = []
 
     if not spf_records:
-        return {
-            "has_ptr": False,
-            "has_multiple_spf": False,
-            "lookup_estimate": 0,
-            "unresolved_a_mechanisms": [],
-            "unresolved_mx_mechanisms": [],
-            "cidr_entries": [],
-            "cidr_out_of_allowlist": [],
-            "all_mechanism": "",
-            "all_policy_ok": False,
-            "plus_all": False,
-            "neutral_all": False,
-            "has_mx_mechanism": False,
-            "includes_mx_hosts": [],
-            "mx_covered": False,
-        }
+        return _empty_spf_analysis()
 
     primary = spf_records[0]
     parts = primary.split()
@@ -393,10 +495,14 @@ def parse_spf(
             raw_net = part.split(":", 1)[1]
             try:
                 net = ipaddress.ip_network(raw_net, strict=False)
-                if allowlist and not any(net.subnet_of(allowed) for allowed in allowlist):
+                if allowlist and not any(_subnet_of(net, allowed) for allowed in allowlist):
                     cidr_outside.append(part)
             except ValueError:
-                cidr_outside.append(part)
+                # A mechanism that will not parse is its own fault, reported under its own
+                # name. Folding it into cidr_out_of_allowlist raised an alert about the
+                # allowlist on hosts that have none; dropping it instead lost the only
+                # detection there was. It gets a separate counter.
+                cidr_malformed.append(part)
         if bare == "all":
             all_mechanism = part
             tok_clean = token
@@ -415,6 +521,7 @@ def parse_spf(
         "unresolved_mx_mechanisms": unresolved_mx,
         "cidr_entries": cidr_entries,
         "cidr_out_of_allowlist": cidr_outside,
+        "cidr_malformed": cidr_malformed,
         "all_mechanism": all_mechanism,
         "all_policy_ok": all_policy_ok,
         "plus_all": plus_all,
@@ -504,9 +611,9 @@ def check_ns_sync(
     for ns in ns_records:
         ns_host = ns.rstrip(".")
         # resolve NS host to IPs
-        ns_ips, _, _ = query_records(resolver, ns_host, "A")
+        ns_ips, _, _ = query_records(resolver, ns_host, "A", count_failures=False)
         if check_ipv6:
-            ns_aaaa, _, _ = query_records(resolver, ns_host, "AAAA")
+            ns_aaaa, _, _ = query_records(resolver, ns_host, "AAAA", count_failures=False)
             ns_ips.extend(ns_aaaa)
         if not ns_ips:
             entries.append({"ns": ns_host, "ip": None, "serial": None, "status": "NO_IP"})
@@ -517,7 +624,7 @@ def check_ns_sync(
         ns_resolver.lifetime = timeout
         ns_resolver.timeout = timeout
         try:
-            soa_answers, _, _ = query_records(ns_resolver, domain, "SOA")
+            soa_answers, _, _ = query_records(ns_resolver, domain, "SOA", count_failures=False)
             if soa_answers:
                 try:
                     serial = soa_answers[0].split()[2]
@@ -533,7 +640,13 @@ def check_ns_sync(
     uniq_serials = [s for s in set(serials) if s != ""]
     consistent = len(uniq_serials) <= 1
     mismatch = 0 if consistent else max(len(serials) - 1, 0)
-    return {"entries": entries, "consistent": consistent, "mismatch": mismatch}
+    # A server answering NO_SOA/NO_IP/ERROR never reaches the serial comparison --
+    # serials are collected from successful answers only. Without a separate count
+    # such a server is invisible: the aggregate reads consistent=1 while a member of
+    # the delegation is silent.
+    unanswered = sum(1 for e in entries if e.get("status") != "OK")
+    return {"entries": entries, "consistent": consistent, "mismatch": mismatch,
+            "unanswered": unanswered, "total": len(entries)}
 
 
 def _is_generic_ptr(hostname: str) -> bool:
@@ -780,17 +893,93 @@ def check_dnsbl(
     return entries_all, listed_only
 
 
-def build_lld(mx_data: List[Dict], ip_data: List[Dict], zones: List[str]) -> Dict:
-    return {
-        "lld_mx": {"data": [{"{#MXHOST}": mx["host"], "{#MXPRIO}": mx["prio"]} for mx in mx_data]},
-        "lld_mx_ip": {
+def count_ptr_checked(entries: List[Dict]) -> int:
+    """Сколько адресов реально осмотрено.
+
+    SKIP_IPV6 и ERROR не осматривались: первый пропущен по семейству адресов, второй
+    вообще не является адресом. Знаменатель покрытия не должен их включать -- «0 из 5
+    без PTR» не может считать те, на которые не смотрели. Вынесено из main(), чтобы
+    тест проверял эту формулу вызовом, а не собственной копией.
+    """
+    return sum(1 for e in entries if e.get("status") not in ("SKIP_IPV6", "ERROR"))
+
+
+def classify_address(ip: str, budget_used: int, max_ip: int) -> str:
+    """Decide what happens to one discovered MX address.
+
+    Returns CHECK (inspect it, and it consumes a slot), or the status to record:
+    ERROR for a malformed address, SKIP_IPV6 because DNSBL and PTR here are IPv4-only,
+    NOT_CHECKED once max_ip slots are spent. max_ip == 0 means no limit at all.
+
+    Skipped addresses consume no budget: spending a slot on an address that is then
+    never inspected would silently shrink the coverage {$DNSBL_MAX_IP} promises.
+    """
+    try:
+        version = ipaddress.ip_address(ip).version
+    except ValueError:
+        return "ERROR"
+    if version == 6:
+        return "SKIP_IPV6"
+    if max_ip > 0 and budget_used >= max_ip:
+        return "NOT_CHECKED"
+    return "CHECK"
+
+
+def build_lld(
+    mx_data: Optional[List[Dict]],
+    ip_data: Optional[List[Dict]],
+    zones: List[str],
+    dkim_data: Optional[List[Dict]] = None,
+    ns_data: Optional[List[Dict]] = None,
+) -> Dict:
+    """Build the discovery roots.
+
+    Every root follows one rule: None means "could not find out" and the root is
+    omitted; a list -- including an empty one -- means "looked, and this is what is
+    there". The distinction is load-bearing because an empty data array starts Zabbix's
+    30-day deletion clock on everything already discovered, so a run whose lookups
+    failed must never publish one. lld_dnsbl_zones is the exception that proves it: its
+    contents come from a macro, not from DNS, so there is nothing it can fail to see."""
+    out: Dict = {"lld_dnsbl_zones": {"data": [{"{#DNSBL_ZONE}": z} for z in zones]}}
+    if mx_data is not None:
+        out["lld_mx"] = {
+            "data": [{"{#MXHOST}": mx["host"], "{#MXPRIO}": mx["prio"]} for mx in mx_data]
+        }
+    if ip_data is not None:
+        out["lld_mx_ip"] = {
             "data": [
                 {"{#MXHOST}": entry["mx_host"], "{#MXIP}": entry["ip"], "{#PROTO}": entry["proto"]}
                 for entry in ip_data
             ]
-        },
-        "lld_dnsbl_zones": {"data": [{"{#DNSBL_ZONE}": z} for z in zones]},
-    }
+        }
+    # Discovered from what actually answered, not from the configured selector list:
+    # a selector with no TXT record is "not published", so no item is created for it.
+    #
+    # None means "could not find out" and omits the root entirely; [] means "looked,
+    # found nothing" and is a legitimate assertion. The distinction matters because an
+    # empty data array starts Zabbix's deletion clock on everything already discovered,
+    # and a transient timeout must never be allowed to make that claim -- the same rule
+    # that keeps lld_* out of the error envelope.
+    def _distinct(values: List[str]) -> List[str]:
+        # Discovery keys items on the macro alone, so a name repeated in the answer would
+        # produce two rows resolving to one item key. Duplicate selectors and duplicate
+        # NS names are exactly what duplicates.dkim / duplicates.ns report, so these
+        # diagnostics must survive the very state they help diagnose.
+        seen = set()
+        out_list = []
+        for v in values:
+            if v and v not in seen:
+                seen.add(v)
+                out_list.append(v)
+        return out_list
+
+    if dkim_data is not None:
+        out["lld_dkim_selector"] = {
+            "data": [{"{#DKIM_SELECTOR}": s} for s in _distinct([r["selector"] for r in dkim_data])]
+        }
+    if ns_data is not None:
+        out["lld_ns"] = {"data": [{"{#NSHOST}": n} for n in _distinct([e.get("ns") for e in ns_data])]}
+    return out
 
 
 def parse_dmarc(records: List[str]) -> Dict:
@@ -822,6 +1011,17 @@ def parse_dkim_records(dkim_records: List[str]) -> Dict:
         key_bits = 0
         k_type = tags.get("k", "rsa")
         p_val = tags.get("p", "")
+        # RFC 6376 section 3.6.1: an empty p= value means the key has been REVOKED.
+        # The record stays published, so "DKIM record missing" cannot see it, yet every
+        # signature made with that key stops verifying. Absent p= is a malformed record;
+        # present-but-empty is a deliberate revocation. The two must not be conflated.
+        revoked = "p" in tags and not p_val
+        # RFC 6376 section 3.6.1, t=y: "This domain is testing DKIM. Verifiers MUST NOT
+        # treat messages from Signers in testing mode differently from unsigned email,
+        # even should the signature fail to verify." A selector left in testing mode
+        # therefore provides no enforcement at all, however good its key.
+        flags = [f.strip() for f in tags.get("t", "").split(":") if f.strip()]
+        testing = "y" in flags
         if p_val:
             try:
                 der = base64.b64decode(p_val + "==")  # pad for safety
@@ -846,11 +1046,21 @@ def parse_dkim_records(dkim_records: List[str]) -> Dict:
             "k": k_type,
             "key_bits": key_bits,
             "has_key": bool(p_val),
+            "revoked": revoked,
+            "testing": testing,
         })
 
     min_bits = min((r["key_bits"] for r in records if r["key_bits"] > 0), default=0)
     weak_count = sum(1 for r in records if 0 < r["key_bits"] < 2048)
-    return {"records": records, "min_key_bits": min_bits, "weak_key_count": weak_count}
+    revoked_count = sum(1 for r in records if r["revoked"])
+    testing_count = sum(1 for r in records if r["testing"])
+    return {
+        "records": records,
+        "min_key_bits": min_bits,
+        "weak_key_count": weak_count,
+        "revoked_count": revoked_count,
+        "testing_count": testing_count,
+    }
 
 
 def main() -> int:
@@ -950,6 +1160,7 @@ def main() -> int:
     dnsbl_test_ip = args.dnsbl_test_ip.strip()
 
     cache = load_cache(CACHE_PATH)
+    cache_at_start = json.loads(json.dumps(cache))  # снимок для вычисления своих правок
     resolver = build_resolver(args.resolver, dns_timeout, shuffle_resolvers)
     dnsbl_max_ip = max(0, dnsbl_max_ip)
     if os.environ.get("DEBUG_DNSBL"):
@@ -966,11 +1177,22 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    # What was actually used, not what was asked for: {$DNS_RESOLVER} is empty on
+    # every host here, meaning "take the system resolvers", and echoing the empty
+    # macro back made the item blank -- useless for the one job it has, which is
+    # telling you which resolver was answering when checks started degrading.
+    resolver_used = ",".join(getattr(resolver, "nameservers", []) or []) or args.resolver
+
     if simulate:
-        simulated = {
-            "mx": [],
-            "spf": ["v=spf1 include:example.com ptr ~all"],
-            "spf_analysis": {
+        # Строится поверх _default_result(), а не собирается вручную: рукописная копия
+        # разошлась со схемой на 54 ключа и вводила в заблуждение каждого, кто ею
+        # проверял шаблон. Переопределяются только те поля, которые демонстрируются.
+        simulated = _default_result(resolver_used, dnsbl_zones)
+        simulated["seen"] = {k: True for k in simulated["seen"]}
+        simulated["meta"]["query_time_ms"] = int((time.time() - _START) * 1000)
+        if simulate == "bad_spf":
+            simulated["spf"] = ["v=spf1 include:example.com ptr ~all"]
+            simulated["spf_analysis"].update({
                 "has_ptr": True,
                 "has_multiple_spf": True,
                 "lookup_estimate": spf_max_lookups + 5,
@@ -978,92 +1200,53 @@ def main() -> int:
                 "unresolved_mx_mechanisms": ["broken.mx.example"],
                 "cidr_entries": ["203.0.113.0/24"],
                 "cidr_out_of_allowlist": ["203.0.113.0/24"],
+                "cidr_malformed": ["ip4:not-a-network"],
                 "all_mechanism": "~all",
-                "all_policy_ok": False,
-            },
-            "snapshots": {
-                "mx_hash": "sim-mx",
-                "spf_hash": "sim-spf",
-                "dmarc_hash": "sim-dmarc",
-                "dkim_hash": "sim-dkim",
-                "ds_hash": "sim-ds",
-                "ns_hash": "sim-ns",
-                "soa": {"serial": "0", "hash": "sim-soa"},
-            },
-            "dnssec": {"ds_present": False, "ad_flag": False},
-            "dnsbl": {
+            })
+            simulated["duplicates"]["dmarc"] = {"has_duplicates": True, "count": 2}
+            simulated["duplicates"]["dkim"] = {"has_duplicates": True, "selectors": ["default"]}
+        else:  # dnsbl
+            zone = dnsbl_zones[0] if dnsbl_zones else "dnsbl.local"
+            entry = {"ip": "127.0.0.2", "zone": zone, "status": "LISTED",
+                     "a": ["127.0.0.2"], "txt": ["simulated listing"]}
+            simulated["dnsbl"].update({
                 "checked_ips": ["127.0.0.2"],
-                "zones": dnsbl_zones,
-                "entries": [
-                    {
-                        "ip": "127.0.0.2",
-                        "zone": dnsbl_zones[0] if dnsbl_zones else "dnsbl.local",
-                        "status": "LISTED",
-                        "a": ["127.0.0.2"],
-                        "txt": ["simulated listing"]
-                    }
-                ],
-                "listed": [
-                    {
-                        "ip": "127.0.0.2",
-                        "zone": dnsbl_zones[0] if dnsbl_zones else "dnsbl.local",
-                        "response": ["127.0.0.2"],
-                        "txt": ["simulated listing"]
-                    }
-                ],
+                "entries": [entry],
+                "listed": [{"ip": "127.0.0.2", "zone": zone,
+                            "response": ["127.0.0.2"], "txt": ["simulated listing"]}],
                 "listed_count": 1,
-            },
-            "meta": {
-                "resolver_used": args.resolver,
-                "query_time_ms": int((time.time() - start) * 1000),
-                "timestamp": int(time.time()),
-                "error": None,
-                "version": VERSION,
-            },
-            "transport": {
-                "mta_sts": {"present": False, "txt": []},
-                "tls_rpt": {"present": False, "txt": []},
-            },
-            "bimi": {"present": False, "txt": []},
-            "mail_client_config": {
-                "autoconfig": {"present": False, "type": "MISSING", "records": []},
-                "autodiscover": {"present": False, "type": "MISSING", "records": []},
-                "autodiscover_srv": {"present": False, "records": []},
-            },
-            "ns_consistency": {"entries": [], "consistent": True, "mismatch": 0},
-        }
-        lld = build_lld([], [], dnsbl_zones)
-        simulated.update(lld)
-        simulated["duplicates"] = {
-            "mx": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
-            "dmarc": {"has_duplicates": True, "count": 2},
-            "dkim": {"has_duplicates": True, "selectors": ["default"]},
-            "ns": {"has_duplicates": False, "duplicates": [], "total": 0, "unique": 0},
-            "soa": {"has_duplicates": False, "count": 1},
-        }
+                "summary": "IP: 127.0.0.2, Zone: {}, Code: 127.0.0.2, Reason: simulated listing".format(zone),
+            })
         print(json.dumps(simulated, ensure_ascii=True, separators=(",", ":")))
         return 0
 
-    result = _default_result(args.resolver, dnsbl_zones)
+    result = _default_result(resolver_used, dnsbl_zones)
 
     try:
-        mx_records, _, ad_flag_mx = query_records(resolver, domain, "MX")
+        _lf_mx = _LOOKUP_FAILURES
+        mx_records, _, ad_flag_mx, mx_reason = query_records_ex(resolver, domain, "MX")
+        mx_seen = mx_reason is None
         # Apex MX answer is authenticated → the domain's own zone is DNSSEC-signed,
         # even when the MX hosts themselves live in an unsigned provider zone.
         result["dnssec"]["ad_flag"] = result["dnssec"]["ad_flag"] or ad_flag_mx
         mx_list = []
+        null_mx = False
         for mx in mx_records:
             parts = mx.split()
             if len(parts) != 2:
                 continue
             prio = int(parts[0])
             host = parts[1].rstrip(".")
-            if not host or host == "":
-                continue
-            if host == ".":
+            if host in ("", "."):
+                # RFC 7505 section 3: a single MX RR with preference 0 and a zero-length
+                # label ('.') is the domain declaring that it accepts no mail. Dropping it
+                # silently leaves an empty MX list, which reads as "the domain lost its
+                # MX records" and raises a HIGH alert about a deliberate, valid choice.
+                null_mx = prio == 0 and len(mx_records) == 1
                 continue
             mx_list.append({"host": host, "prio": prio, "a": [], "aaaa": [], "ttl": None})
         mx_list = sorted(mx_list, key=lambda x: x["prio"])[:max_mx]
+        result["mx_null"] = null_mx
 
         ip_entries: List[Dict] = []
 
@@ -1090,10 +1273,16 @@ def main() -> int:
 
         result["mx"] = mx_list
         result["mx_cname_count"] = sum(1 for m in mx_list if m.get("cname"))
+        # Не только апексный MX: адреса хостов тоже относятся к разделу, и именно из них
+        # наполняется lld_mx_ip. Пустой список адресов на провалившемся запросе -- такое
+        # же утверждение об отсутствии, как и пустой MX.
+        result["seen"]["mx"] = mx_seen and _LOOKUP_FAILURES == _lf_mx
 
-        txt_records, _, _ = query_records(resolver, domain, "TXT")
+        _lf_spf = _LOOKUP_FAILURES
+        txt_records, _, txt_reason_seen = query_records(resolver, domain, "TXT")
         spf_records = [t for t in txt_records if t.lower().startswith("v=spf1")]
         result["spf"] = spf_records
+        result["seen"]["spf"] = _LOOKUP_FAILURES == _lf_spf
         result["spf_analysis"] = parse_spf(
             domain,
             spf_records,
@@ -1105,8 +1294,12 @@ def main() -> int:
             [m["host"] for m in mx_list],
         )
 
+        ds_records: List[str] = []  # bound before the try: prev/ds and the DS hash both read it
+        ds_seen = False  # did the DS lookup actually answer, as opposed to failing?
         try:
-            ds_records, _, ad_flag_ds = query_records(resolver, domain, "DS")
+            ds_records, _, ad_flag_ds, ds_reason = query_records_ex(resolver, domain, "DS")
+            ds_seen = ds_reason is None
+            result["seen"]["ds"] = ds_seen
             result["dnssec"]["ds_present"] = bool(ds_records)
             # DS lives in (and is signed by) the parent zone — an authenticated
             # DS answer confirms the secure delegation to this domain.
@@ -1118,26 +1311,36 @@ def main() -> int:
         listed: List[Dict] = []
         entries: List[Dict] = []
         ptr_entries: List[Dict] = []
-        if dnsbl_max_ip > 0:
-            limited_ip_entries = ip_entries[:dnsbl_max_ip]
-        else:
-            limited_ip_entries = ip_entries
-        for entry in limited_ip_entries:
+        # Discovery (lld_mx_ip) sees every address; only dnsbl_max_ip of them get looked
+        # at. Everything else records an explicit status, so a per-IP item never sits
+        # empty forever and is never mistaken for an absent PTR record.
+        # PTR/FCrDNS проверяется у КАЖДОГО адреса. {$DNSBL_MAX_IP} ограничивает только
+        # обращения к публичным чёрным спискам, у которых есть квоты; обратный DNS --
+        # обычные запросы к тем же серверам, и экономить на них значит оставлять часть
+        # адресов почтового сервера непроверенной.
+        dnsbl_used = 0
+        for entry in ip_entries:
             ip = entry["ip"]
-            try:
-                ip_obj = ipaddress.ip_address(ip)
-            except ValueError:
+            verdict = classify_address(ip, dnsbl_used, dnsbl_max_ip)
+            if verdict == "ERROR":
+                ptr_entries.append({"ip": ip, "status": "ERROR", "error": "invalid_ip"})
                 continue
-            if ip_obj.version == 6 and not check_ipv6:
+            if verdict == "SKIP_IPV6":
+                ptr_entries.append({"ip": ip, "status": verdict})
                 continue
-            if ip_obj.version == 6:
-                continue
+            ptr_entries.append(check_ptr_fcrdns(resolver, ip, check_ipv6))
+            if verdict == "NOT_CHECKED":
+                continue                      # за пределами квоты DNSBL, но PTR проверен
+            dnsbl_used += 1
             checked_ips.append(ip)
             entries_all, listed_only = check_dnsbl(resolver, ip, dnsbl_zones, cache, dnsbl_cache_ttl)
             entries.extend(entries_all)
             listed.extend(listed_only)
-            ptr_entries.append(check_ptr_fcrdns(resolver, ip, check_ipv6))
 
+        # Сколько адресов осталось непроверенным по чёрным спискам. PTR у них проверен,
+        # но «не в списке» про них утверждать нельзя, и это должно быть видно.
+        ipv4_total = sum(1 for p in ptr_entries if p.get("status") != "SKIP_IPV6")
+        result["dnsbl"]["not_checked"] = max(0, ipv4_total - len(checked_ips))
         result["dnsbl"]["checked_ips"] = checked_ips
         result["dnsbl"]["entries"] = entries
         result["dnsbl"]["listed"] = listed
@@ -1153,7 +1356,12 @@ def main() -> int:
             "no_fcrdns": ptr_no_fcrdns,
             "generic": ptr_generic,
             "errors": ptr_errors,
-            "checked": len(ptr_entries),
+            # PTR теперь выполняется для каждого адреса, поэтому checked отличается от
+            # discovered ровно на пропущенные IPv6 и нераспознанные адреса. Отдельного
+            # not_checked больше нет: непокрытие осталось только у чёрных списков и
+            # считается в dnsbl.not_checked.
+            "checked": count_ptr_checked(ptr_entries),
+            "discovered": len(ptr_entries),
             # Which IPs, not just how many: with several MX the count alone does not
             # say which address is broken. Zabbix expression macros cannot render text
             # (see 0.1.47), so the trigger reads this via {ITEM.LASTVALUE<n>} instead.
@@ -1180,30 +1388,56 @@ def main() -> int:
         result["dnsbl"]["summary"] = " | ".join(summary_parts) if summary_parts else "No listings or policy blocks"
 
         # DMARC
+        _lf_dmarc = _LOOKUP_FAILURES
         dmarc_records, _, _ = query_records(resolver, f"_dmarc.{domain}", "TXT")
+        result["seen"]["dmarc"] = _LOOKUP_FAILURES == _lf_dmarc
         dmarc_txt = [r for r in dmarc_records if r.lower().startswith("v=dmarc1")]
         result["dmarc"] = parse_dmarc(dmarc_txt)
 
         # Transport security: MTA-STS / TLS-RPT
+        _lf_tr = _LOOKUP_FAILURES
         result["transport"] = check_transport(resolver, domain)
+        result["seen"]["transport"] = _LOOKUP_FAILURES == _lf_tr
 
         # BIMI
+        _lf_bimi = _LOOKUP_FAILURES
         result["bimi"] = check_bimi(resolver, domain)
+        result["seen"]["bimi"] = _LOOKUP_FAILURES == _lf_bimi
 
         # Mail client autoconfiguration DNS records
+        _lf_ac = _LOOKUP_FAILURES
         result["mail_client_config"] = check_mail_client_config(resolver, domain)
+        result["seen"]["autoconfig"] = _LOOKUP_FAILURES == _lf_ac
 
         # DKIM selectors
         dkim_records: List[str] = []
+        _lf_before_dkim = _LOOKUP_FAILURES
         for sel in dkim_selectors:
             recs, _, _ = query_records(resolver, f"{sel}._domainkey.{domain}", "TXT")
             for r in recs:
                 dkim_records.append(f"{sel}:{r}")
+        # Scoped to this loop, not the whole run: a SERVFAIL on some MX host's reverse
+        # zone says nothing about which selectors exist, and gating discovery on a
+        # process-wide counter would blank it for an unrelated failure.
+        dkim_seen = _LOOKUP_FAILURES == _lf_before_dkim
+        result["seen"]["dkim"] = dkim_seen
         result["dkim"] = parse_dkim_records(dkim_records)
 
         # NS, SOA
-        ns_records, _, _ = query_records(resolver, domain, "NS")
+        ns_records, _, _, ns_reason = query_records_ex(resolver, domain, "NS")
         soa_records, _, _ = query_records(resolver, domain, "SOA")
+        # Publish these only when the lookup actually answered. An empty list here is a
+        # claim -- "this zone has no delegation" -- and the item renders it as *NONE*.
+        # A run that could not find out leaves the key absent, and the item's error
+        # handler renders *UNKNOWN* instead. Same rule the lld_* roots follow.
+        if ns_reason is None:
+            result["ns"] = sorted(n.rstrip(".") for n in ns_records)
+        else:
+            result.pop("ns", None)
+        if ds_seen:
+            result["ds"] = sorted(ds_records)
+        else:
+            result.pop("ds", None)
         result["ns_consistency"] = check_ns_sync(resolver, domain, check_ipv6, dns_timeout)
         soa_serial = ""
         if soa_records:
@@ -1226,7 +1460,7 @@ def main() -> int:
             "spf_hash": _hash(spf_records),
             "dmarc_hash": _hash(dmarc_txt),
             "dkim_hash": _hash(dkim_records),
-            "ds_hash": _hash(ds_records if 'ds_records' in locals() else []),
+            "ds_hash": _hash(ds_records),
             "ns_hash": _hash(ns_records),
             "soa": {"serial": soa_serial, "hash": _hash([soa_serial])},
         }
@@ -1255,16 +1489,17 @@ def main() -> int:
             "spf": result["spf"][0] if result["spf"] else "",
             "mx": _fmt_mx_disp(result["mx"]),
             "dkim": _fmt_dkim_disp(result["dkim"].get("records", [])),
-            "dmarc": result["dmarc"].get("p", "") if isinstance(result.get("dmarc"), dict) else "",
+            # parse_dmarc yields None when the record carries no p= tag; the cache
+            # would then hand the next run a null where every sibling is a string.
+            "dmarc": (result["dmarc"].get("p") or "") if isinstance(result.get("dmarc"), dict) else "",
+            "ns": ", ".join(result.get("ns", [])),
+            "ds": ", ".join(result.get("ds", [])),
         }
         snap_key = "__snapshot__|" + domain
         prev_cached = cache.get(snap_key)
         prev_disp = prev_cached if isinstance(prev_cached, dict) else {}
         result["prev"] = {
-            "spf": prev_disp.get("spf", ""),
-            "mx": prev_disp.get("mx", ""),
-            "dkim": prev_disp.get("dkim", ""),
-            "dmarc": prev_disp.get("dmarc", ""),
+            key: prev_disp.get(key) or "" for key in ("spf", "mx", "dkim", "dmarc", "ns", "ds")
         }
         cache[snap_key] = cur_disp
 
@@ -1303,7 +1538,18 @@ def main() -> int:
 
         result["duplicates"] = duplicates
 
-        lld = build_lld(mx_list, ip_entries, dnsbl_zones)
+        # Each root is gated on the one lookup that establishes it, never on a
+        # process-wide failure counter: a SERVFAIL on some MX host's reverse zone says
+        # nothing about which selectors exist, and check_ns_sync probes authoritative
+        # servers directly -- traffic a firewall may block on every single run, which
+        # would blank the discovery data forever.
+        lld = build_lld(
+            mx_list if result["seen"]["mx"] else None,
+            ip_entries if result["seen"]["mx"] else None,
+            dnsbl_zones,
+            result["dkim"].get("records", []) if dkim_seen else None,
+            result["ns_consistency"].get("entries", []) if ns_reason is None else None,
+        )
         result.update(lld)
 
     except Exception as exc:  # pragma: no cover
@@ -1318,8 +1564,13 @@ def main() -> int:
 
     result["meta"]["lookup_failures"] = _LOOKUP_FAILURES
 
-    save_cache(CACHE_PATH, cache)
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
+    sys.stdout.flush()
+    # Только изменённые нами ключи: наложение всего словаря откатило бы записи, сделанные
+    # другими хостами за время этого прогона.
+    changed = {k: v for k, v in cache.items() if cache_at_start.get(k) != v}
+    if changed:
+        save_cache(CACHE_PATH, changed)
     return 0
 
 
