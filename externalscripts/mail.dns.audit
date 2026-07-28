@@ -19,7 +19,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-VERSION = "0.1.60"
+VERSION = "0.1.61"
 
 # Wall-clock budget (seconds) for the whole run, kept under the Zabbix
 # external-check Timeout so a stuck resolver produces a clean error instead of
@@ -830,10 +830,11 @@ def check_dnsbl(
                 if not error_msg:
                     error_msg = str(exc)
 
-        if error_msg:
+        # A-запись — это и есть вердикт блоклиста; TXT только поясняет его словами.
+        # Поэтому таймаут TXT поверх успешного A НЕ отменяет ответ: иначе живая зона
+        # выглядит как "CHECK FAILED", а настоящий LISTED теряется вместе с алертом.
+        if error_msg and not responses:
             status = "CHECK FAILED"
-            if not txt_answers:
-                txt_answers = [error_msg]
         elif nxdomain:
             status = "NOT LISTED"
         elif responses or txt_answers:
@@ -847,8 +848,12 @@ def check_dnsbl(
                 status = "LISTED"
         else:
             status = "CHECK FAILED"
-            if not txt_answers:
-                txt_answers = ["empty DNSBL response"]
+            txt_answers = ["empty DNSBL response"]
+
+        # Текст ошибки кладём после классификации, чтобы он не подменял собой
+        # реальный TXT и не ловился маркерами _is_policy_txt.
+        if error_msg and not txt_answers:
+            txt_answers = [error_msg]
 
         entry = {"ip": ip, "zone": zone, "status": status, "a": responses, "txt": txt_answers}
         if error_msg:

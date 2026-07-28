@@ -273,7 +273,7 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.60` | Template version. Must match `VERSION` in the script, otherwise the version-mismatch warning fires |
+| `{$TEMPLATE_VERSION}` | `0.1.61` | Template version. Must match `VERSION` in the script, otherwise the version-mismatch warning fires |
 | `{$MAIL_DNS_NODATA_SEC}` | `3h` | nodata threshold for the master item. Must exceed twice the poll interval: at an hourly poll the old `1800` was true for half of every hour and the trigger flapped permanently |
 
 ### Visibility and coverage
@@ -323,9 +323,10 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 ### Test suite and linter
 
 ```bash
-# All three test files. Each is a standalone script; exit 1 on any mismatch
+# All four test files. Each is a standalone script; exit 1 on any mismatch
 python3 tests/test_wave1_contracts.py
 python3 tests/test_ptr_states.py
+python3 tests/test_dnsbl_states.py
 python3 tests/test_template_contracts.py
 
 # Linter (rules F and E9; .ruff.toml includes the extensionless script)
