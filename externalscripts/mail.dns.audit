@@ -18,7 +18,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-VERSION = "0.1.57"
+VERSION = "0.1.58"
 
 # Wall-clock budget (seconds) for the whole run, kept under the Zabbix
 # external-check Timeout so a stuck resolver produces a clean error instead of

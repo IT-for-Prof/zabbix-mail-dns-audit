@@ -2413,10 +2413,10 @@ zabbix_export:
               value: 'Mail DNS'
           triggers:
             - uuid: bdf0b0d8185d4a93a46f8d09f17b9291
-              expression: 'last(/Template Mail DNS Audit Zabbix/mail.ns.unanswered)>0'
+              expression: 'min(/Template Mail DNS Audit Zabbix/mail.ns.unanswered,#2)>0'
               name: '{HOST.HOST}: {ITEM.LASTVALUE1} nameserver(s) do not answer SOA'
               priority: WARNING
-              description: 'One or more nameservers listed in the delegation did not return a SOA record when queried directly. Resolution still works while the others answer, but the zone is one failure away from trouble and the serial-consistency check is blind to the silent server. Requires a run that lost no lookups.'
+              description: 'One or more nameservers listed in the delegation did not return a SOA record when queried directly, on two consecutive polls. Resolution still works while the others answer, but the zone is one failure away from trouble and the serial-consistency check is blind to the silent server -- a server that never answers contributes no serial, so the mismatch counter stays at zero. Two polls are required because a single missed SOA is ordinary transient noise: this trigger fired on its first day from one such blip, and the same lesson produced the #2 guard on the PTR and DNSBL triggers.'
               dependencies:
                 - name: 'DNS audit script error on {HOST.HOST}: {ITEM.LASTVALUE}'
                   expression: 'length(last(/Template Mail DNS Audit Zabbix/mail.dns.error))>0'
@@ -3234,7 +3234,7 @@ zabbix_export:
           value: '10'
           description: 'Maximum number of DNS lookups allowed for SPF record according to RFC 7208.'
         - macro: '{$TEMPLATE_VERSION}'
-          value: 0.1.57
+          value: 0.1.58
           description: 'Template version identifier for Mail DNS Audit.'
       dashboards:
         - uuid: 1a2b3c4d5e6f4a7b8c9d0e1f2a3b4c5d
