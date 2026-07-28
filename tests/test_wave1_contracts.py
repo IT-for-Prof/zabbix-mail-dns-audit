@@ -206,14 +206,28 @@ def main():
     path = _tf.mktemp(suffix=".json")
     _json.dump({"A": {"v": 1}, "B": {"v": 1}}, open(path, "w"))
     loaded = mod.load_cache(path)
-    start = _json.loads(_json.dumps(loaded))
+    # Снимок и разницу берём у самого скрипта, а не повторяем их здесь: своя копия
+    # формулы проходит тест и тогда, когда рабочий код уже разошёлся с ней.
+    start = mod.snapshot_cache(loaded)
     loaded["A"] = {"v": 2}                                      # правим свой ключ
     _json.dump({"A": {"v": 1}, "B": {"v": 99}}, open(path, "w"))  # чужой процесс успел
-    mod.save_cache(path, {k: v for k, v in loaded.items() if start.get(k) != v})
+    mod.save_cache(path, mod.cache_changes(loaded, start))
     after = _json.load(open(path))
     check("свой ключ записан", after["A"] == {"v": 2}, after)
     check("чужой ключ не откачен", after["B"] == {"v": 99}, after)
     _os.unlink(path)
+
+    print("снимок кэша глубокий")
+    # Отличает глубокую копию от мелкой: при dict(cache) снимок разделил бы вложенный
+    # словарь с оригиналом, правка на месте оказалась бы видна и в снимке, и
+    # cache_changes решил бы, что менять нечего.
+    orig = {"K": {"v": 1}}
+    snap = mod.snapshot_cache(orig)
+    orig["K"]["v"] = 2                                          # правка НА МЕСТЕ
+    check("правка на месте попадает в изменения",
+          mod.cache_changes(orig, snap) == {"K": {"v": 2}}, mod.cache_changes(orig, snap))
+    check("нетронутый ключ в изменения не попадает",
+          mod.cache_changes({"K": {"v": 1}}, {"K": {"v": 1}}) == {}, "не пусто")
 
     print("признаки видимости заведены по разделам")
     seen = mod._default_result()["seen"]
@@ -222,6 +236,40 @@ def main():
           sorted(seen))
     check("по умолчанию False -- прогон, ничего не увидевший, ничего и не утверждает",
           all(v is False for v in seen.values()), seen)
+
+    print("разрыв покрытия чёрных списков считается по широкому знаменателю")
+    # ERROR у check_ptr_fcrdns -- это и «адрес не разобрать», и «исправный IPv4, у
+    # которого не ответил обратный DNS». Второй квоту потратил и лежит в checked_ips.
+    # Сузишь знаменатель до count_ptr_checked -- вычитание занизит разрыв, и непроверенное
+    # прочитается как чистое. Тест держит два счётчика раздельными намеренно.
+    ptr = ([{"status": "OK"}] * 4 + [{"status": "ERROR"}]
+           + [{"status": "OK"}] * 17 + [{"status": "ERROR"}] * 3)
+    checked = ["1.2.3.{}".format(i) for i in range(5)]
+    check("20 адресов без вердикта, ошибки PTR не вычитаются",
+          mod.count_dnsbl_not_checked(ptr, checked) == 20,
+          mod.count_dnsbl_not_checked(ptr, checked))
+    check("знаменатель шире, чем у count_ptr_checked",
+          mod.count_dnsbl_not_checked(ptr, checked) > max(0, mod.count_ptr_checked(ptr) - len(checked)),
+          (mod.count_dnsbl_not_checked(ptr, checked), mod.count_ptr_checked(ptr)))
+    check("IPv6 не попадает в разрыв покрытия",
+          mod.count_dnsbl_not_checked([{"status": "SKIP_IPV6"}] * 9 + [{"status": "OK"}], ["1.2.3.4"]) == 0,
+          mod.count_dnsbl_not_checked([{"status": "SKIP_IPV6"}] * 9 + [{"status": "OK"}], ["1.2.3.4"]))
+    check("отрицательного разрыва не бывает",
+          mod.count_dnsbl_not_checked([{"status": "OK"}], ["a", "b", "c"]) == 0,
+          mod.count_dnsbl_not_checked([{"status": "OK"}], ["a", "b", "c"]))
+    check("пустой ввод даёт ноль", mod.count_dnsbl_not_checked([], []) == 0,
+          mod.count_dnsbl_not_checked([], []))
+    check("запись без ключа status считается адресом",
+          mod.count_dnsbl_not_checked([{}, {}], []) == 2,
+          mod.count_dnsbl_not_checked([{}, {}], []))
+    # Граница, которую счётчик НЕ закрывает, закреплена тестом, а не только текстом:
+    # адрес, к которому обратились, но все зоны ответили CHECK FAILED, лежит в
+    # checked_ips и даёт ноль. Вердикта про него нет, и считает это отдельный элемент
+    # mail.dnsbl.check_failed.count. Если однажды решат, что not_checked обязан покрывать
+    # и этот случай, тест упадёт и заставит поправить заодно описание элемента.
+    check("адрес с провалившимся запросом в разрыв НЕ попадает (его считает check_failed)",
+          mod.count_dnsbl_not_checked([{"status": "OK"}], ["1.2.3.4"]) == 0,
+          mod.count_dnsbl_not_checked([{"status": "OK"}], ["1.2.3.4"]))
 
     print("prev охватывает шесть записей")
     prev = mod._default_result()["prev"]

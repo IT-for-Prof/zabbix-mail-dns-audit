@@ -155,7 +155,7 @@ def main():
         )
         check("эталон свежий: проверено хотя бы 5 булевых полей", examined >= 5,
               "найдено {} — вероятно, tests/sample_output.json устарел; "
-              "пересоздать: python3 externalscripts/mail.dns.audit itforprof.com 127.0.0.1 10 0 "
+              "пересоздать: python3 externalscripts/mail.dns.audit <ваш-домен> 127.0.0.1 10 0 "
               "zen.spamhaus.org '' 10 '-all|~all' 1200 5 5 default 1 > tests/sample_output.json".format(examined))
 
     print("уникальность uuid")

@@ -250,7 +250,7 @@ All parameters are configured via template macros in Zabbix:
 | `{$DNSBL_ZONES}` | `zen.spamhaus.org,b.barracudacentral.org` | Zones to check. Barracuda requires free registration of the querying IPs |
 | `{$DNSBL_TEST_IP}` | `127.0.0.2` | Canary address: a live blocklist must return it. Empty disables the self-test |
 | `{$DNSBL_CACHE_TTL_SEC}` | `1200` | DNSBL cache TTL (seconds) |
-| `{$DNSBL_MAX_IP}` | `1` | Max IPs for DNSBL |
+| `{$DNSBL_MAX_IP}` | `5` | Max IPs for DNSBL (`0` means no limit) |
 | `{$MAX_MX_CHECK}` | `5` | Max MX to check |
 
 ### Check Control
@@ -273,8 +273,8 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 |-------|-------|-------------|
 | `{$CHECK_IPV6}` | `0` | Check AAAA records (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | DKIM selectors (comma-separated, without `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.52` | Template version |
-| `{$MAIL_DNS_NODATA_SEC}` | `1800` | nodata threshold (seconds) for master item |
+| `{$TEMPLATE_VERSION}` | `0.1.60` | Template version. Must match `VERSION` in the script, otherwise the version-mismatch warning fires |
+| `{$MAIL_DNS_NODATA_SEC}` | `3h` | nodata threshold for the master item. Must exceed twice the poll interval: at an hourly poll the old `1800` was true for half of every hour and the trigger flapped permanently |
 
 ### Visibility and coverage
 
@@ -319,6 +319,25 @@ Per-host opt-in/opt-out macros. Set at the host level to override the template d
 - **Dashboard**: "Mail DNS Audit Overview" displays overall status
 
 ## Testing
+
+### Test suite and linter
+
+```bash
+# All three test files. Each is a standalone script; exit 1 on any mismatch
+python3 tests/test_wave1_contracts.py
+python3 tests/test_ptr_states.py
+python3 tests/test_template_contracts.py
+
+# Linter (rules F and E9; .ruff.toml includes the extensionless script)
+ruff check .
+```
+
+> **Which interpreter.** `test_template_contracts.py` parses the template YAML and needs
+> PyYAML, which the runtime environment `/opt/zabbix-mail-dns/venv` deliberately does not
+> carry — it holds only dnspython, because the script itself needs nothing else. So run
+> the tests with the **system** `python3`, not the environment's interpreter. That same
+> file compiles every JavaScript preprocessing step from the template through `node`, so
+> `node` must be installed for it.
 
 ### Built-in Simulations
 

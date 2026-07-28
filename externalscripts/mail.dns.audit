@@ -7,6 +7,7 @@ Returns one-line JSON with MX, SPF, DNSBL, DNSSEC and meta fields.
 
 import argparse
 import base64
+import copy
 import hashlib
 import ipaddress
 import json
@@ -18,7 +19,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-VERSION = "0.1.59"
+VERSION = "0.1.60"
 
 # Wall-clock budget (seconds) for the whole run, kept under the Zabbix
 # external-check Timeout so a stuck resolver produces a clean error instead of
@@ -271,6 +272,27 @@ def load_cache(path: str) -> Dict[str, Dict]:
             return json.load(fh)
     except Exception:
         return {}
+
+
+def snapshot_cache(cache: Dict[str, Dict]) -> Dict[str, Dict]:
+    """Снимок кэша на старте прогона, от которого потом считаются свои правки.
+
+    Копия глубокая, а не dict(cache). Мелкая копия делит вложенные объекты с оригиналом,
+    поэтому правка на месте была бы видна в снимке -- и cache_changes решил бы, что
+    ничего не менялось, и не записал бы её. Сейчас в кэш кладут только целые значения
+    (cache[key] = {...}), так что мелкой копии хватило бы; глубокая держит инвариант
+    независимо от того, как станут писать в него завтра.
+    """
+    return copy.deepcopy(cache)
+
+
+def cache_changes(cache: Dict[str, Dict], snapshot: Dict[str, Dict]) -> Dict[str, Dict]:
+    """Только те ключи, которые изменил этот прогон.
+
+    save_cache сливает в общий файл ровно это. Отдать ему весь cache нельзя: он несёт
+    записи, прочитанные на старте, и затёр бы то, что другой хост записал в это время.
+    """
+    return {k: v for k, v in cache.items() if snapshot.get(k) != v}
 
 
 def save_cache(path: str, data: Dict[str, Dict]) -> None:
@@ -904,6 +926,33 @@ def count_ptr_checked(entries: List[Dict]) -> int:
     return sum(1 for e in entries if e.get("status") not in ("SKIP_IPV6", "ERROR"))
 
 
+def count_dnsbl_not_checked(entries: List[Dict], checked_ips: List[str]) -> int:
+    """Сколько адресов осталось за пределами квоты {$DNSBL_MAX_IP}.
+
+    Знаменатель НАМЕРЕННО шире, чем у count_ptr_checked: тот отбрасывает ERROR, здесь
+    ERROR остаётся. Вопросы разные. Там -- «у скольких адресов мы смотрели PTR», и
+    адрес, который не удалось разобрать, в знаменатель покрытия не входит. Здесь --
+    «сколько адресов квота вообще не пустила к спискам», а адрес с ошибкой PTR туда
+    входит: обратный DNS у него не ответил, но к спискам он не обращался тем более.
+
+    Разница не косметическая. check_ptr_fcrdns возвращает ERROR и для вполне исправного
+    IPv4, у которого просто не ответил обратный DNS. Такой адрес квоту потратил и лежит
+    в checked_ips. Выкинь его из уменьшаемого -- и вычитание занизит разрыв покрытия:
+    на 25 адресах с 5 проверенными и 4 ошибками PTR получится 16 вместо 20.
+
+    Чего этот счётчик НЕ измеряет -- «про сколько адресов нет вердикта». Адрес, к
+    которому обратились, но все зоны ответили CHECK FAILED, попадает в checked_ips
+    раньше самого запроса (см. main: append идёт до check_dnsbl) и потому вычитается,
+    давая ноль, хотя вердикта про него нет. Этот случай считает отдельный элемент
+    mail.dnsbl.check_failed.count, и подменять одно другим нельзя.
+
+    Разобранный неверно адрес (invalid_ip) прибавляет к результату единицу, хотя квота
+    ни при чём. Это осознанный перекос в сторону «не знаем»: он честнее обратного.
+    """
+    ipv4_total = sum(1 for e in entries if e.get("status") != "SKIP_IPV6")
+    return max(0, ipv4_total - len(checked_ips))
+
+
 def classify_address(ip: str, budget_used: int, max_ip: int) -> str:
     """Decide what happens to one discovered MX address.
 
@@ -965,13 +1014,7 @@ def build_lld(
         # produce two rows resolving to one item key. Duplicate selectors and duplicate
         # NS names are exactly what duplicates.dkim / duplicates.ns report, so these
         # diagnostics must survive the very state they help diagnose.
-        seen = set()
-        out_list = []
-        for v in values:
-            if v and v not in seen:
-                seen.add(v)
-                out_list.append(v)
-        return out_list
+        return list(dict.fromkeys(v for v in values if v))
 
     if dkim_data is not None:
         out["lld_dkim_selector"] = {
@@ -1160,7 +1203,7 @@ def main() -> int:
     dnsbl_test_ip = args.dnsbl_test_ip.strip()
 
     cache = load_cache(CACHE_PATH)
-    cache_at_start = json.loads(json.dumps(cache))  # снимок для вычисления своих правок
+    cache_at_start = snapshot_cache(cache)
     resolver = build_resolver(args.resolver, dns_timeout, shuffle_resolvers)
     dnsbl_max_ip = max(0, dnsbl_max_ip)
     if os.environ.get("DEBUG_DNSBL"):
@@ -1339,8 +1382,7 @@ def main() -> int:
 
         # Сколько адресов осталось непроверенным по чёрным спискам. PTR у них проверен,
         # но «не в списке» про них утверждать нельзя, и это должно быть видно.
-        ipv4_total = sum(1 for p in ptr_entries if p.get("status") != "SKIP_IPV6")
-        result["dnsbl"]["not_checked"] = max(0, ipv4_total - len(checked_ips))
+        result["dnsbl"]["not_checked"] = count_dnsbl_not_checked(ptr_entries, checked_ips)
         result["dnsbl"]["checked_ips"] = checked_ips
         result["dnsbl"]["entries"] = entries
         result["dnsbl"]["listed"] = listed
@@ -1566,9 +1608,7 @@ def main() -> int:
 
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
     sys.stdout.flush()
-    # Только изменённые нами ключи: наложение всего словаря откатило бы записи, сделанные
-    # другими хостами за время этого прогона.
-    changed = {k: v for k, v in cache.items() if cache_at_start.get(k) != v}
+    changed = cache_changes(cache, cache_at_start)
     if changed:
         save_cache(CACHE_PATH, changed)
     return 0

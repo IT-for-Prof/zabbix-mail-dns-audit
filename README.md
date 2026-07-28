@@ -251,7 +251,7 @@ wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
 | `{$DNSBL_ZONES}` | `zen.spamhaus.org,b.barracudacentral.org` | Зоны для проверки. Barracuda требует бесплатной регистрации опрашивающих IP |
 | `{$DNSBL_TEST_IP}` | `127.0.0.2` | Канареечный адрес: живой список обязан его вернуть. Пусто — самотест выключен |
 | `{$DNSBL_CACHE_TTL_SEC}` | `1200` | TTL кэша DNSBL (сек) |
-| `{$DNSBL_MAX_IP}` | `1` | Макс. IP для DNSBL |
+| `{$DNSBL_MAX_IP}` | `5` | Макс. IP для DNSBL (`0` — без ограничения) |
 | `{$MAX_MX_CHECK}` | `5` | Макс. MX для проверки |
 
 ### Управление проверками
@@ -274,8 +274,8 @@ wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
 |--------|----------|---------|
 | `{$CHECK_IPV6}` | `0` | Проверять AAAA (1/0) |
 | `{$DKIM_SELECTORS}` | `default` | Селекторы DKIM (через запятую, без `._domainkey`) |
-| `{$TEMPLATE_VERSION}` | `0.1.52` | Версия шаблона |
-| `{$MAIL_DNS_NODATA_SEC}` | `1800` | Порог отсутствия данных (сек) для nodata-триггера master item |
+| `{$TEMPLATE_VERSION}` | `0.1.60` | Версия шаблона. Должна совпадать с `VERSION` в скрипте — иначе поднимется предупреждение о несовпадении |
+| `{$MAIL_DNS_NODATA_SEC}` | `3h` | Порог отсутствия данных для nodata-триггера master item. Должен превышать два интервала опроса: при опросе раз в час значение `1800` держалось истинным полчаса из каждого часа, и триггер мигал постоянно |
 
 ### Признаки видимости и покрытие
 
@@ -320,6 +320,25 @@ wget -O /tmp/template_mail_dns_audit_zabbix.yaml \
 - **Dashboard**: "Mail DNS Audit Overview" отображает общий статус
 
 ## Тестирование
+
+### Набор тестов и линтер
+
+```bash
+# Все три файла тестов. Каждый — самостоятельный скрипт, выход 1 при расхождении
+python3 tests/test_wave1_contracts.py
+python3 tests/test_ptr_states.py
+python3 tests/test_template_contracts.py
+
+# Линтер (правила F и E9; .ruff.toml включает скрипт без расширения .py)
+ruff check .
+```
+
+> **Каким интерпретатором.** `test_template_contracts.py` разбирает YAML шаблона и
+> требует PyYAML, а рабочее окружение `/opt/zabbix-mail-dns/venv` его намеренно не
+> несёт — там только dnspython, потому что самому скрипту больше ничего не нужно.
+> Поэтому тесты запускают **системным** `python3`, а не интерпретатором окружения.
+> Этот же файл через `node` компилирует все JavaScript-шаги предобработки из шаблона,
+> так что для него нужен установленный `node`.
 
 ### Встроенные симуляции
 
